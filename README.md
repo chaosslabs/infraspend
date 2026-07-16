@@ -144,28 +144,6 @@ uvicorn app.main:app --reload
 npm start
 ```
 
-#### Dashboard Deployment on Cloudflare Pages
-
-Dashboard production deploys are handled by the `Deploy Dashboard to Cloudflare Pages` GitHub Actions workflow. The workflow builds the React app in `dashboard/` and uploads `dashboard/build` to Cloudflare Pages.
-
-Create these GitHub Actions secrets:
-
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-
-Create these GitHub Actions repository variables:
-
-- `REACT_APP_BACKEND_URL`
-- `REACT_APP_AUTH0_DOMAIN`
-- `REACT_APP_AUTH0_CLIENT_ID`
-
-Optional repository variables:
-
-- `REACT_APP_AUTH0_AUDIENCE` if your Auth0 API requires an audience
-- `CLOUDFLARE_PAGES_PROJECT_NAME` defaults to `infraspend-dashboard`
-
-Automatic Vercel deployments are disabled with the checked-in Vercel config files.
-
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to:

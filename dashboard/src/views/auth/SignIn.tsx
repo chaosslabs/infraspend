@@ -25,7 +25,7 @@ export default function SignIn() {
   return (
     <>
       <a
-        href="https://github.com/chaosslabs/infraspend"
+        href="https://github.com/chaosslabs/finops-xray"
         className="github-corner"
         aria-label="View source on GitHub"
         target="_blank"

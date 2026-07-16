@@ -47,7 +47,7 @@ If you have a suggestion for a new feature or enhancement:
 1. Fork the repository
 2. Clone your fork:
 ```bash
-git clone https://github.com/your-username/infraspend.git
+git clone https://github.com/your-username/finops-xray.git
 ```
 
 3. Set up development environment:

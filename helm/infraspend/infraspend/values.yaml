@@ -4,7 +4,7 @@
 
 global:
   imageRegistry: ghcr.io
-  imageRepository: chaosslabs/finops-xray
+  imageRepository: chaosslabs/infraspend
 
 api:
   name: infraspend-api

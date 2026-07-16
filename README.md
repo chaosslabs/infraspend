@@ -32,8 +32,8 @@ InfraSpend is an open-source FinOps dashboard designed to help organizations mon
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/chaosslabs/finops-xray.git
-cd finops-xray
+git clone https://github.com/chaosslabs/infraspend.git
+cd infraspend
 ```
 
 2. Install frontend dependencies:
@@ -76,7 +76,7 @@ ingress:
   enabled: true
   className: nginx  # Adjust based on your cluster
   hosts:
-    - host: infraspend.your-domain.com
+    - host: infraspend.io
       paths:
         - path: /api
           pathType: Prefix

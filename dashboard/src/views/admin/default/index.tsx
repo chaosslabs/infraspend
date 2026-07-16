@@ -19,7 +19,7 @@ const Dashboard = () => {
     return (
       <div className="mt-3 flex flex-col items-center justify-center">
         <h1 className="text-2xl font-bold text-navy-700 dark:text-white">
-          Welcome to FinDash 🚀
+          Welcome to InfraSpend 🚀
         </h1>
         <p className="mt-4 text-gray-600 dark:text-gray-400">
           To get started, you'll need to configure some accounts.

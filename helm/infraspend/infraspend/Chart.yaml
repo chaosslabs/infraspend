@@ -1,6 +1,6 @@
 apiVersion: v2
-name: findash
-description: A Helm chart for FinDash - Open Source FinOps Dashboard
+name: infraspend
+description: A Helm chart for InfraSpend - Open Source FinOps Dashboard
 
 # A chart can be either an 'application' or a 'library' chart.
 #

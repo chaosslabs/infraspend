@@ -5,13 +5,17 @@ import "./index.css";
 import App from "./App";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
+const auth0Domain = process.env.REACT_APP_AUTH0_DOMAIN ?? "";
+const auth0ClientId = process.env.REACT_APP_AUTH0_CLIENT_ID ?? "";
+const auth0Audience =
+  process.env.REACT_APP_AUTH0_AUDIENCE ?? "https://infraspend.cloudbudget.ai";
 
 root.render(
   <Auth0Provider
-      domain="platformlabs.us.auth0.com"
-      clientId="mlUVKKqaYLc0QBITyOXT1ev0a1D5v72l"
+      domain={auth0Domain}
+      clientId={auth0ClientId}
       authorizationParams={{
-        audience: 'https://findash.cloudbudget.ai',
+        audience: auth0Audience,
         redirect_uri: window.location.origin,
       }}
     >

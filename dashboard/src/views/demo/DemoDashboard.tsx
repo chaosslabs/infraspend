@@ -11,9 +11,9 @@ export default function DemoDashboard() {
           {/* Header */}
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <img src={logoWhite} alt="FinDash Logo" className="h-12" />
+              <img src={logoWhite} alt="InfraSpend Logo" className="h-12" />
               <h1 className="text-2xl font-bold text-navy-700 dark:text-white">
-                FinDash Demo
+                InfraSpend Demo
               </h1>
             </div>
             <Link

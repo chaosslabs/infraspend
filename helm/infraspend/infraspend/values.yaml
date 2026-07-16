@@ -1,13 +1,13 @@
-# Default values for findash.
+# Default values for infraspend.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 global:
   imageRegistry: ghcr.io
-  imageRepository: platformlabs-co/findash
+  imageRepository: chaosslabs/infraspend
 
 api:
-  name: findash-api
+  name: infraspend-api
   image:
     repository: api
     tag: latest
@@ -31,21 +31,21 @@ api:
     - name: DATABASE_URL
       valueFrom:
         secretKeyRef:
-          name: findash-postgresql
+          name: infraspend-postgresql
           key: postgres-url
     - name: DATADOG_API_KEY
       valueFrom:
         secretKeyRef:
-          name: findash-secrets
+          name: infraspend-secrets
           key: datadog-api-key
     - name: DATADOG_APP_KEY
       valueFrom:
         secretKeyRef:
-          name: findash-secrets
+          name: infraspend-secrets
           key: datadog-app-key
 
 dashboard:
-  name: findash-dashboard
+  name: infraspend-dashboard
   image:
     repository: dashboard
     tag: latest
@@ -65,24 +65,29 @@ dashboard:
     enabled: false
   env:
     - name: REACT_APP_BACKEND_URL
-      value: "http://findash-api:8000"
+      value: "http://infraspend-api:8000"
     - name: REACT_APP_AUTH0_DOMAIN
       valueFrom:
         secretKeyRef:
-          name: findash-secrets
+          name: infraspend-secrets
           key: auth0-domain
     - name: REACT_APP_AUTH0_CLIENT_ID
       valueFrom:
         secretKeyRef:
-          name: findash-secrets
+          name: infraspend-secrets
           key: auth0-client-id
+    - name: REACT_APP_AUTH0_AUDIENCE
+      valueFrom:
+        secretKeyRef:
+          name: infraspend-secrets
+          key: auth0-audience
 
 postgresql:
   enabled: true
   auth:
-    username: findash
-    database: findash
-    existingSecret: findash-postgresql
+    username: infraspend
+    database: infraspend
+    existingSecret: infraspend-postgresql
   primary:
     persistence:
       size: 8Gi
@@ -92,27 +97,28 @@ ingress:
   className: "nginx"
   annotations: {}
   hosts:
-    - host: findash.local
+    - host: infraspend.local
       paths:
         - path: /api
           pathType: Prefix
-          service: findash-api
+          service: infraspend-api
           port: 8000
         - path: /
           pathType: Prefix
-          service: findash-dashboard
+          service: infraspend-dashboard
           port: 3000
   tls: []
 
 secrets:
   create: true
-  findashSecrets:
+  infraspendSecrets:
     auth0-domain: ""
     auth0-client-id: ""
+    auth0-audience: "https://infraspend.cloudbudget.ai"
     datadog-api-key: ""
     datadog-app-key: ""
   postgresql:
-    postgres-url: "postgresql://findash:password@findash-postgresql:5432/findash"
+    postgres-url: "postgresql://infraspend:password@infraspend-postgresql:5432/infraspend"
 
 replicaCount: 1
 

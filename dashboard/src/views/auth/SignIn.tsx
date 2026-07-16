@@ -25,7 +25,7 @@ export default function SignIn() {
   return (
     <>
       <a
-        href="https://github.com/platformlabs-co/findash"
+        href="https://github.com/chaosslabs/infraspend"
         className="github-corner"
         aria-label="View source on GitHub"
         target="_blank"
@@ -83,9 +83,9 @@ export default function SignIn() {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">
         {/* Header */}
         <div className="mt-16 text-center">
-          <img src={logoWhite} alt="FinDash Logo" className="mx-auto mb-6 h-44" />
+          <img src={logoWhite} alt="InfraSpend Logo" className="mx-auto mb-6 h-44" />
           <h1 className="mb-2 text-4xl font-bold text-navy-700 dark:text-white">
-            FinDash - Open Source FinOps Dashboard
+            InfraSpend - Open Source FinOps Dashboard
           </h1>
           <p className="mb-8 text-xl text-gray-600 dark:text-gray-400">
             Explore, analyze and optimize your cloud spending

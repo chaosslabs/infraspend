@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "findash.fullname" . }}
+  name: {{ include "infraspend.fullname" . }}
   labels:
-    {{- include "findash.labels" . | nindent 4 }}
+    {{- include "infraspend.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +12,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "findash.selectorLabels" . | nindent 4 }}
+    {{- include "infraspend.selectorLabels" . | nindent 4 }}

@@ -24,7 +24,7 @@ spec:
               protocol: TCP
           envFrom:
             - secretRef:
-                name: findash-secrets
+                name: infraspend-secrets
           env:
             {{- range .Values.dashboard.env }}
             - name: {{ .name }}

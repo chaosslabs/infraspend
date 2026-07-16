@@ -1,6 +1,6 @@
-# Contributing to FinDash
+# Contributing to InfraSpend
 
-First off, thank you for considering contributing to FinDash! It's people like you that make FinDash such a great tool.
+First off, thank you for considering contributing to InfraSpend! It's people like you that make InfraSpend such a great tool.
 
 ## Code of Conduct
 
@@ -31,7 +31,7 @@ If you have a suggestion for a new feature or enhancement:
 2. Provide a step-by-step description of the suggested enhancement
 3. Provide specific examples to demonstrate the steps
 4. Describe the current behavior and explain which behavior you expected to see instead
-5. Explain why this enhancement would be useful to most FinDash users
+5. Explain why this enhancement would be useful to most InfraSpend users
 
 ### Pull Requests
 
@@ -47,7 +47,7 @@ If you have a suggestion for a new feature or enhancement:
 1. Fork the repository
 2. Clone your fork:
 ```bash
-git clone https://github.com/your-username/findash.git
+git clone https://github.com/your-username/infraspend.git
 ```
 
 3. Set up development environment:
@@ -112,7 +112,7 @@ npm install package_name --save-dev  # for dev dependencies
 ## Project Structure
 
 ```
-findash/
+infraspend/
 ├── api/                 # Backend FastAPI application
 │   ├── app/
 │   │   ├── routers/    # API endpoints
@@ -179,4 +179,4 @@ pytest
 
 Feel free to open an issue with your question or reach out to the maintainers directly.
 
-Thank you for contributing to FinDash! 🚀 
+Thank you for contributing to InfraSpend! 🚀

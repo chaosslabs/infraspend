@@ -1,8 +1,8 @@
-# FinDash - Open Source FinOps Dashboard
+# InfraSpend - Open Source FinOps Dashboard
 
-FinDash is an open-source FinOps dashboard designed to help organizations monitor, analyze, and optimize their cloud spending across multiple vendors.
+InfraSpend is an open-source FinOps dashboard designed to help organizations monitor, analyze, and optimize their cloud spending across multiple vendors.
 
-![FinDash Screenshot](dashboard/public/screenshot.png)
+![InfraSpend Screenshot](dashboard/public/screenshot.png)
 
 ## Features
 
@@ -32,8 +32,8 @@ FinDash is an open-source FinOps dashboard designed to help organizations monito
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/platformlabs-co/findash.git
-cd findash
+git clone https://github.com/chaosslabs/infraspend.git
+cd infraspend
 ```
 
 2. Install frontend dependencies:
@@ -65,9 +65,10 @@ helm repo update
 2. Create a values file (`values.yaml`):
 ```yaml
 secrets:
-  findashSecrets:
+  infraspendSecrets:
     auth0-domain: "your-auth0-domain"
     auth0-client-id: "your-auth0-client-id"
+    auth0-audience: "https://infraspend.cloudbudget.ai"
     datadog-api-key: "your-datadog-api-key"
     datadog-app-key: "your-datadog-app-key"
 
@@ -75,25 +76,25 @@ ingress:
   enabled: true
   className: nginx  # Adjust based on your cluster
   hosts:
-    - host: findash.your-domain.com
+    - host: infraspend.your-domain.com
       paths:
         - path: /api
           pathType: Prefix
-          service: findash-api
+          service: infraspend-api
           port: 8000
         - path: /
           pathType: Prefix
-          service: findash-dashboard
+          service: infraspend-dashboard
           port: 3000
 ```
 
 3. Install the chart:
 ```bash
 # Update dependencies
-helm dependency update ./helm/findash/findash
+helm dependency update ./helm/infraspend/infraspend
 
 # Install the chart
-helm install findash ./helm/findash/findash -f values.yaml -n your-namespace
+helm install infraspend ./helm/infraspend/infraspend -f values.yaml -n your-namespace
 ```
 
 4. Verify the installation:
@@ -104,12 +105,12 @@ kubectl get ingress -n your-namespace
 
 5. Upgrading:
 ```bash
-helm upgrade findash ./helm/findash/findash -f values.yaml -n your-namespace
+helm upgrade infraspend ./helm/infraspend/infraspend -f values.yaml -n your-namespace
 ```
 
 6. Uninstalling:
 ```bash
-helm uninstall findash -n your-namespace
+helm uninstall infraspend -n your-namespace
 ```
 
 ### Configuration
@@ -127,7 +128,7 @@ The following table lists the configurable parameters for the Helm chart:
 | `ingress.enabled` | Enable ingress creation | `false` |
 | `secrets.create` | Create Kubernetes secrets | `true` |
 
-For a complete list of parameters, see the [values.yaml](helm/findash/findash/values.yaml) file.
+For a complete list of parameters, see the [values.yaml](helm/infraspend/infraspend/values.yaml) file.
 
 4. Set up environment variables:
 
@@ -153,7 +154,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## Architecture
 
-FinDash consists of two main components:
+InfraSpend consists of two main components:
 
 1. **Frontend** (`/dashboard`):
    - React with TypeScript

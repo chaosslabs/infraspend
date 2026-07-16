@@ -114,7 +114,7 @@ secrets:
   infraspendSecrets:
     auth0-domain: ""
     auth0-client-id: ""
-    auth0-audience: "https://infraspend.cloudbudget.ai"
+    auth0-audience: ""
     datadog-api-key: ""
     datadog-app-key: ""
   postgresql:

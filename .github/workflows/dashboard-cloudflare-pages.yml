@@ -43,7 +43,7 @@ jobs:
           REACT_APP_BACKEND_URL: ${{ vars.REACT_APP_BACKEND_URL }}
           REACT_APP_AUTH0_DOMAIN: ${{ vars.REACT_APP_AUTH0_DOMAIN }}
           REACT_APP_AUTH0_CLIENT_ID: ${{ vars.REACT_APP_AUTH0_CLIENT_ID }}
-          REACT_APP_AUTH0_AUDIENCE: ${{ vars.REACT_APP_AUTH0_AUDIENCE || 'https://infraspend.cloudbudget.ai' }}
+          REACT_APP_AUTH0_AUDIENCE: ${{ vars.REACT_APP_AUTH0_AUDIENCE }}
         run: |
           for name in REACT_APP_BACKEND_URL REACT_APP_AUTH0_DOMAIN REACT_APP_AUTH0_CLIENT_ID; do
             if [ -z "${!name}" ]; then

@@ -7,15 +7,14 @@ import App from "./App";
 const root = ReactDOM.createRoot(document.getElementById("root"));
 const auth0Domain = process.env.REACT_APP_AUTH0_DOMAIN ?? "";
 const auth0ClientId = process.env.REACT_APP_AUTH0_CLIENT_ID ?? "";
-const auth0Audience =
-  process.env.REACT_APP_AUTH0_AUDIENCE ?? "https://infraspend.cloudbudget.ai";
+const auth0Audience = process.env.REACT_APP_AUTH0_AUDIENCE;
 
 root.render(
   <Auth0Provider
       domain={auth0Domain}
       clientId={auth0ClientId}
       authorizationParams={{
-        audience: auth0Audience,
+        ...(auth0Audience ? { audience: auth0Audience } : {}),
         redirect_uri: window.location.origin,
       }}
     >

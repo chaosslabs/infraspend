@@ -68,7 +68,7 @@ secrets:
   infraspendSecrets:
     auth0-domain: "your-auth0-domain"
     auth0-client-id: "your-auth0-client-id"
-    auth0-audience: "https://infraspend.cloudbudget.ai"
+    auth0-audience: "your-auth0-audience"
     datadog-api-key: "your-datadog-api-key"
     datadog-app-key: "your-datadog-app-key"
 
@@ -161,7 +161,7 @@ Create these GitHub Actions repository variables:
 
 Optional repository variables:
 
-- `REACT_APP_AUTH0_AUDIENCE` defaults to `https://infraspend.cloudbudget.ai`
+- `REACT_APP_AUTH0_AUDIENCE` if your Auth0 API requires an audience
 - `CLOUDFLARE_PAGES_PROJECT_NAME` defaults to `infraspend-dashboard`
 
 Automatic Vercel deployments are disabled with the checked-in Vercel config files.

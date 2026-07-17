@@ -18,7 +18,7 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenSidenav }) => {
   const handleLogout = () => {
     logout({
       logoutParams: {
-        returnTo: `${window.location.origin}/auth/sign-in`,
+        returnTo: `${window.location.origin}/`,
       }
     });
   };

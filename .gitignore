@@ -2,3 +2,4 @@ sql_app.db
 api/test.db
 .DS_Store
 dashboard/build/
+.codex/

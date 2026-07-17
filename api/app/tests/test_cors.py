@@ -54,4 +54,6 @@ def test_cors_response_allows_production_dashboard_origin(monkeypatch):
         headers={"Origin": "https://www.infraspend.io"},
     )
 
-    assert response.headers["access-control-allow-origin"] == "https://www.infraspend.io"
+    assert (
+        response.headers["access-control-allow-origin"] == "https://www.infraspend.io"
+    )

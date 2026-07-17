@@ -28,6 +28,8 @@ api:
   config:
     logLevel: "info"
   env:
+    - name: CORS_ALLOWED_ORIGINS
+      value: "https://infraspend.io,https://www.infraspend.io"
     - name: DATABASE_URL
       valueFrom:
         secretKeyRef:

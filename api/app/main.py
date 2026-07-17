@@ -6,6 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import vendor_metrics, users, forecast, configuration, budget
 from app.helpers.secrets import Secrets
+from app.helpers.config import Config
 from app.migrations.run_all import run_migrations
 from pythonjsonlogger import jsonlogger
 
@@ -54,12 +55,13 @@ def setup_app():
         )
 
     secrets = Secrets()
+    config = Config()
     app.add_middleware(SessionMiddleware, secret_key=secrets.AppSecretKey)
 
     # Set up CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Replace with your specific URL
+        allow_origins=config.CorsAllowedOrigins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

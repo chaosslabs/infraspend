@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 from app.services.vendor_metrics_service import VendorMetricsService
 from app.models import VendorMetrics, User, AWSAPIConfiguration, DatadogAPIConfiguration
@@ -35,12 +36,39 @@ def mock_datadog_config():
 
 @pytest.fixture
 def mock_costs_response():
+    current_year = datetime.now().year
     return {
         "data": [
-            {"month": "01-2024", "cost": 100.0},
-            {"month": "02-2024", "cost": 200.0},
+            {"month": f"01-{current_year}", "cost": 100.0},
+            {"month": f"02-{current_year}", "cost": 200.0},
         ]
     }
+
+
+def make_metric(month: str, cost: float, updated_at: datetime | None = None):
+    metric = Mock(spec=VendorMetrics)
+    metric.month = month
+    metric.cost = cost
+    metric.updated_at = updated_at or datetime.utcnow()
+    return metric
+
+
+def required_months():
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
+    months = []
+    current_date = start_date
+    while current_date <= end_date:
+        months.append(current_date.strftime("%m-%Y"))
+        current_date = (current_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+    return months
+
+
+def configure_metrics_query(mock_db, stored_metrics, all_metrics):
+    metrics_query = mock_db.query.return_value
+    metrics_filter = metrics_query.filter.return_value
+    metrics_order = metrics_filter.order_by.return_value
+    metrics_order.all.side_effect = [stored_metrics, all_metrics]
 
 
 class TestVendorMetricsService:
@@ -55,6 +83,11 @@ class TestVendorMetricsService:
         """
         # GIVEN
         service = VendorMetricsService(mock_user.id, mock_db)
+        all_metrics = [
+            make_metric(item["month"], item["cost"])
+            for item in mock_costs_response["data"]
+        ]
+        configure_metrics_query(mock_db, [], all_metrics)
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         with patch(
@@ -62,9 +95,7 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_aws_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
+            mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
             mock_aws_service.return_value = mock_aws_instance
 
             # WHEN
@@ -86,6 +117,11 @@ class TestVendorMetricsService:
         """
         # GIVEN
         service = VendorMetricsService(mock_user.id, mock_db)
+        all_metrics = [
+            make_metric(item["month"], item["cost"])
+            for item in mock_costs_response["data"]
+        ]
+        configure_metrics_query(mock_db, [], all_metrics)
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         with patch(
@@ -93,9 +129,7 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_dd_service:
             mock_dd_instance = Mock()
-            mock_dd_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
+            mock_dd_instance.get_monthly_costs.return_value = mock_costs_response
             mock_dd_service.return_value = mock_dd_instance
 
             # WHEN
@@ -119,7 +153,17 @@ class TestVendorMetricsService:
         """
         # GIVEN
         service = VendorMetricsService(mock_user.id, mock_db)
-        existing_metric = Mock(spec=VendorMetrics)
+        current_month = datetime.now().strftime("%m-%Y")
+        existing_metric = make_metric(
+            current_month, 25.0, datetime.utcnow() - timedelta(days=2)
+        )
+        stored_metrics = [
+            make_metric(month, 10.0)
+            for month in required_months()
+            if month != current_month
+        ] + [existing_metric]
+        mock_costs_response["data"] = [{"month": current_month, "cost": 300.0}]
+        configure_metrics_query(mock_db, stored_metrics, stored_metrics)
         mock_db.query.return_value.filter.return_value.first.return_value = (
             existing_metric
         )
@@ -129,19 +173,20 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_aws_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
+            mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
             mock_aws_service.return_value = mock_aws_instance
 
             # WHEN
             result = await service.get_and_store_vendor_metrics("aws", "test-config")
 
             # THEN
-            assert result == mock_costs_response
+            assert any(
+                item["month"] == current_month and item["cost"] == 300.0
+                for item in result["data"]
+            )
             mock_db.add.assert_not_called()  # Should not add new records
             mock_db.commit.assert_called_once()
-            assert existing_metric.cost == mock_costs_response["data"][1]["cost"]
+            assert existing_metric.cost == mock_costs_response["data"][0]["cost"]
 
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_invalid_vendor(
@@ -154,6 +199,7 @@ class TestVendorMetricsService:
         """
         # GIVEN
         service = VendorMetricsService(mock_user.id, mock_db)
+        configure_metrics_query(mock_db, [], [])
 
         # WHEN/THEN
         with pytest.raises(ValueError, match="Unsupported vendor: invalid"):
@@ -182,28 +228,12 @@ class TestVendorMetricsService:
             [mock_datadog_config],  # Datadog configs query
         ]
 
-        with patch(
-            "app.services.vendor_metrics_service.AWSService",
-            autospec=True,
-        ) as mock_aws_service, patch(
-            "app.services.vendor_metrics_service.DatadogService",
-            autospec=True,
-        ) as mock_dd_service:
-            mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
-            mock_aws_service.return_value = mock_aws_instance
-
-            mock_dd_instance = Mock()
-            mock_dd_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
-            mock_dd_service.return_value = mock_dd_instance
-
-            # Reset mock for storing metrics
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-
+        with patch.object(
+            VendorMetricsService,
+            "get_and_store_vendor_metrics",
+            new_callable=AsyncMock,
+            return_value=mock_costs_response,
+        ):
             # WHEN
             results = await VendorMetricsService.batch_update_all_vendor_metrics(
                 mock_db
@@ -238,30 +268,12 @@ class TestVendorMetricsService:
             [mock_datadog_config],  # Datadog configs query
         ]
 
-        with patch(
-            "app.services.vendor_metrics_service.AWSService",
-            autospec=True,
-        ) as mock_aws_service, patch(
-            "app.services.vendor_metrics_service.DatadogService",
-            autospec=True,
-        ) as mock_dd_service:
-            # AWS service succeeds
-            mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs = AsyncMock(
-                return_value=mock_costs_response
-            )
-            mock_aws_service.return_value = mock_aws_instance
-
-            # Datadog service fails
-            mock_dd_instance = Mock()
-            mock_dd_instance.get_monthly_costs = AsyncMock(
-                side_effect=Exception("Datadog API error")
-            )
-            mock_dd_service.return_value = mock_dd_instance
-
-            # Reset mock for storing metrics
-            mock_db.query.return_value.filter.return_value.first.return_value = None
-
+        with patch.object(
+            VendorMetricsService,
+            "get_and_store_vendor_metrics",
+            new_callable=AsyncMock,
+            side_effect=[mock_costs_response, Exception("Datadog API error")],
+        ):
             # WHEN
             results = await VendorMetricsService.batch_update_all_vendor_metrics(
                 mock_db

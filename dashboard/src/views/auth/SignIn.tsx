@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import { MdDashboard, MdBarChart, MdAttachMoney } from "react-icons/md";
 import { SiDatadog, SiAmazonaws } from "react-icons/si";
-import logoWhite from "assets/img/layout/logoWhite.png";
+import InfraSpendLogo from "components/logo/InfraSpendLogo";
 import { trackPageView, trackEvent } from "../../utils/gtm";
 
 export default function SignIn() {
@@ -83,7 +83,7 @@ export default function SignIn() {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">
         {/* Header */}
         <div className="mt-16 text-center">
-          <img src={logoWhite} alt="InfraSpend Logo" className="mx-auto mb-6 h-44" />
+          <InfraSpendLogo className="mx-auto mb-6 w-full max-w-[430px] text-white" />
           <h1 className="mb-2 text-4xl font-bold text-navy-700 dark:text-white">
             InfraSpend - Open Source FinOps Dashboard
           </h1>

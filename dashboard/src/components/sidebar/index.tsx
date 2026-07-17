@@ -4,6 +4,7 @@ import { HiX } from "react-icons/hi";
 import Links from "./components/Links";
 
 import SidebarCard from "components/sidebar/componentsrtl/SidebarCard";
+import InfraSpendLogo from "components/logo/InfraSpendLogo";
 import routes from "routes";
 
 const Sidebar = (props: {
@@ -24,10 +25,8 @@ const Sidebar = (props: {
         <HiX />
       </span>
 
-      <div className={`mx-[56px] mt-[50px] flex items-center`}>
-        <div className="mt-1 ml-1 h-2.5 font-poppins text-[26px] font-bold uppercase text-navy-700 dark:text-white">
-          infraspend
-        </div>
+      <div className="mx-[32px] mt-[42px] flex items-center">
+        <InfraSpendLogo className="h-11 w-auto text-navy-700 dark:text-white" />
       </div>
       <div className="mt-[58px] mb-7 h-px bg-gray-300 dark:bg-white/30" />
       {/* Nav item */}

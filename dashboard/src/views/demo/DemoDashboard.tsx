@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import VendorMetrics from "views/admin/default/components/VendorMetrics";
-import logoWhite from "assets/img/layout/logoWhite.png";
+import InfraSpendLogo from "components/logo/InfraSpendLogo";
 
 export default function DemoDashboard() {
   return (
@@ -11,7 +11,7 @@ export default function DemoDashboard() {
           {/* Header */}
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <img src={logoWhite} alt="InfraSpend Logo" className="h-12" />
+              <InfraSpendLogo className="h-12 w-auto text-navy-700 dark:text-white" />
               <h1 className="text-2xl font-bold text-navy-700 dark:text-white">
                 InfraSpend Demo
               </h1>

@@ -38,7 +38,14 @@ def test_client():
     mock_secrets.Auth0Domain = "test.auth0.com"
     mock_secrets.Auth0Audience = "test-audience"
 
-    with patch("app.helpers.secrets.Secrets", return_value=mock_secrets):
+    mock_secrets_service = MagicMock()
+    mock_secrets_service.get_secret.return_value = "test-secret"
+    mock_secrets_service.get_customer_secret.return_value = "test-customer-secret"
+
+    with patch("app.helpers.secrets.Secrets", return_value=mock_secrets), patch(
+        "app.helpers.secrets_service.SecretsService",
+        return_value=mock_secrets_service,
+    ):
         from app.main import app
 
         Base.metadata.create_all(bind=engine)

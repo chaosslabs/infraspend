@@ -85,6 +85,10 @@ class VendorMetricsService:
         self, vendor: str, identifier: str = "Default Configuration"
     ):
         """Get vendor metrics and store them in the database"""
+        vendor = vendor.lower()
+        if vendor not in {"aws", "datadog"}:
+            raise ValueError(f"Unsupported vendor: {vendor}")
+
         try:
             # Get stored metrics
             stored_metrics = (
@@ -92,7 +96,7 @@ class VendorMetricsService:
                 .filter(
                     and_(
                         VendorMetrics.user_id == self.user_id,
-                        VendorMetrics.vendor == vendor.lower(),
+                        VendorMetrics.vendor == vendor,
                         VendorMetrics.identifier == identifier,
                     )
                 )
@@ -165,7 +169,7 @@ class VendorMetricsService:
                 .filter(
                     and_(
                         VendorMetrics.user_id == self.user_id,
-                        VendorMetrics.vendor == vendor.lower(),
+                        VendorMetrics.vendor == vendor,
                         VendorMetrics.identifier == identifier,
                     )
                 )

@@ -244,8 +244,12 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
     try {
       const token = await getAccessTokenSilently();
       const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+      const query = new URLSearchParams({ format: "csv" });
+      if (identifier) {
+        query.set("identifier", identifier);
+      }
       const response = await fetch(
-        `${backendUrl}/v1/vendors-forecast/${vendor}?format=csv`,
+        `${backendUrl}/v1/vendors-forecast/${vendor}?${query.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

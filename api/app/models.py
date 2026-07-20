@@ -18,6 +18,9 @@ class User(Base):
         "DatadogAPIConfiguration", back_populates="user"
     )
     aws_configurations = relationship("AWSAPIConfiguration", back_populates="user")
+    heroku_configurations = relationship(
+        "HerokuAPIConfiguration", back_populates="user"
+    )
     budget_plans = relationship("BudgetPlan", back_populates="user")
 
 
@@ -66,12 +69,25 @@ class AWSAPIConfiguration(APIConfiguration):
     )
 
 
+class HerokuAPIConfiguration(APIConfiguration):
+    __tablename__ = "heroku_api_configurations"
+
+    api_key = Column(String)
+    team_name_or_id = Column(String, nullable=True)
+    user = relationship("User", back_populates="heroku_configurations")
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "identifier", name="uq_heroku_user_identifier"
+        ),
+    )
+
+
 class BudgetPlan(Base):
     __tablename__ = "budget_plans"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    vendor = Column(String)  # "datadog" or "aws"
+    vendor = Column(String)  # "datadog", "aws", or "heroku"
     type = Column(String, default="default")  # For future use with different plan types
     budgets = Column(JSON)  # Store monthly budgets as JSON
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -86,7 +102,7 @@ class VendorMetrics(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    vendor = Column(String)  # "datadog" or "aws"
+    vendor = Column(String)  # "datadog", "aws", or "heroku"
     identifier = Column(String)  # Configuration identifier
     month = Column(String)  # Format: MM-YYYY
     cost = Column(sqlalchemy.Float)

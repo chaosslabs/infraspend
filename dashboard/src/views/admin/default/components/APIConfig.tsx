@@ -4,6 +4,7 @@ import { useAPIConfigurations } from "./hooks/useAPIConfigurations";
 import Modal from "components/modal";
 import DatadogConfig from "./DatadogConfig";
 import AWSConfig from "./AWSConfig";
+import HerokuConfig from "./HerokuConfig";
 
 interface VendorConfig {
   id: string;
@@ -24,6 +25,12 @@ const VENDOR_CONFIGS: VendorConfig[] = [
     name: "AWS",
     type: "aws",
     component: AWSConfig,
+  },
+  {
+    id: "heroku",
+    name: "Heroku",
+    type: "heroku",
+    component: HerokuConfig,
   },
 ];
 

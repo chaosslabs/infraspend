@@ -13,7 +13,8 @@ InfraSpend is an open-source FinOps dashboard designed to help organizations mon
 ## Supported Integrations
 
 - ✅ **Datadog**: Full support for cost metrics and forecasting
-- 🔜 **AWS**: Full support for cost metrics and forecasting
+- ✅ **AWS**: Full support for cost metrics and forecasting
+- ✅ **Heroku**: Full support for invoice cost metrics and forecasting
 
 ## Getting Started
 

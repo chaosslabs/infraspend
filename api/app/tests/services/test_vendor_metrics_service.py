@@ -2,7 +2,13 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 from app.services.vendor_metrics_service import VendorMetricsService
-from app.models import VendorMetrics, User, AWSAPIConfiguration, DatadogAPIConfiguration
+from app.models import (
+    VendorMetrics,
+    User,
+    AWSAPIConfiguration,
+    DatadogAPIConfiguration,
+    HerokuAPIConfiguration,
+)
 
 
 @pytest.fixture
@@ -10,6 +16,13 @@ def mock_db():
     db = Mock()
     # Setup query.all() to return an empty list by default
     db.query.return_value.all.return_value = []
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+        []
+    )
+    db.query.return_value.filter.return_value.first.return_value = None
+    db.query.return_value.filter.return_value.filter.return_value.first.return_value = (
+        Mock()
+    )
     return db
 
 
@@ -31,6 +44,13 @@ def mock_aws_config():
 def mock_datadog_config():
     config = Mock(spec=DatadogAPIConfiguration)
     config.identifier = "test-datadog"
+    return config
+
+
+@pytest.fixture
+def mock_heroku_config():
+    config = Mock(spec=HerokuAPIConfiguration)
+    config.identifier = "test-heroku"
     return config
 
 
@@ -143,6 +163,40 @@ class TestVendorMetricsService:
             mock_db.commit.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_get_and_store_vendor_metrics_heroku_success(
+        self, mock_db, mock_user, mock_costs_response
+    ):
+        """
+        GIVEN a VendorMetricsService instance and Heroku vendor
+        WHEN get_and_store_vendor_metrics is called
+        THEN it should fetch costs and store them in the database
+        """
+        # GIVEN
+        service = VendorMetricsService(mock_user.id, mock_db)
+        all_metrics = [
+            make_metric(item["month"], item["cost"])
+            for item in mock_costs_response["data"]
+        ]
+        configure_metrics_query(mock_db, [], all_metrics)
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        with patch(
+            "app.services.vendor_metrics_service.HerokuService",
+            autospec=True,
+        ) as mock_heroku_service:
+            mock_heroku_instance = Mock()
+            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_service.return_value = mock_heroku_instance
+
+            # WHEN
+            result = await service.get_and_store_vendor_metrics("heroku", "test-config")
+
+            # THEN
+            assert result == mock_costs_response
+            assert mock_db.add.call_count == 2  # Two months of data
+            mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_update_existing(
         self, mock_db, mock_user, mock_costs_response
     ):
@@ -212,6 +266,7 @@ class TestVendorMetricsService:
         mock_user,
         mock_aws_config,
         mock_datadog_config,
+        mock_heroku_config,
         mock_costs_response,
     ):
         """
@@ -226,6 +281,7 @@ class TestVendorMetricsService:
         mock_db.query.return_value.filter.return_value.all.side_effect = [
             [mock_aws_config],  # AWS configs query
             [mock_datadog_config],  # Datadog configs query
+            [mock_heroku_config],  # Heroku configs query
         ]
 
         with patch.object(
@@ -240,10 +296,11 @@ class TestVendorMetricsService:
             )
 
             # THEN
-            assert len(results["success"]) == 2  # One success message for each config
+            assert len(results["success"]) == 3  # One success message for each config
             assert len(results["failed"]) == 0
             assert any("AWS metrics updated" in msg for msg in results["success"])
             assert any("Datadog metrics updated" in msg for msg in results["success"])
+            assert any("Heroku metrics updated" in msg for msg in results["success"])
 
     @pytest.mark.asyncio
     async def test_batch_update_all_vendor_metrics_partial_failure(
@@ -266,6 +323,7 @@ class TestVendorMetricsService:
         mock_db.query.return_value.filter.return_value.all.side_effect = [
             [mock_aws_config],  # AWS configs query
             [mock_datadog_config],  # Datadog configs query
+            [],  # Heroku configs query
         ]
 
         with patch.object(

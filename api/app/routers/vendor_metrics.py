@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.helpers.database import get_db
 from app.helpers.auth import get_authenticated_user
-from app.services.vendor_metrics_service import VendorMetricsService
+from app.services.vendor_metrics_service import (
+    VendorConfigurationNotFound,
+    VendorMetricsService,
+)
 from app.helpers.secrets_service import SecretsService
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
-secrets = SecretsService()
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/v1/vendors-metrics", tags=["vendors"])
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
+    secrets = SecretsService()
     stored_api_key = secrets.get_secret("INTERNAL_API_KEY")
     if not stored_api_key:
         raise HTTPException(
@@ -69,6 +72,14 @@ async def get_vendor_metrics(
             detail={
                 "message": str(e),
                 "code": "INVALID_VENDOR",
+            },
+        )
+    except VendorConfigurationNotFound as e:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": str(e),
+                "code": "CONFIG_NOT_FOUND",
             },
         )
     except Exception as e:

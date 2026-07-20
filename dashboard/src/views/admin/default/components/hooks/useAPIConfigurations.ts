@@ -33,6 +33,7 @@ export const useAPIConfigurations = () => {
 
   useEffect(() => {
     fetchConfigurations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getAccessTokenSilently]);
 
   return { configurations, loading, error, refresh: fetchConfigurations };

@@ -9,13 +9,18 @@ import BarChart from "components/charts/BarChart";
 import { ApexOptions } from "apexcharts";
 import { DatadogIcon, AWSIcon } from "../../../../components/icons";
 import { Link } from "react-router-dom";
+import {
+  SourceHealthBadge,
+  deriveSourceHealth,
+  SourceHealthFields,
+} from "./SourceHealth";
 
 interface MonthlyMetric {
   month: string;
   cost: number;
 }
 
-interface VendorMetricsData {
+interface VendorMetricsData extends SourceHealthFields {
   data: MonthlyMetric[];
   message?: string;
 }
@@ -62,8 +67,29 @@ const generateDemoMetrics = (vendor: "datadog" | "aws"): VendorMetricsData => {
   });
   
   const baseAmount = vendor === "datadog" ? 2000 : 15000;
-  
+  const now = Date.now();
+
+  // Demo two distinct health states so the freshness surfacing is visible:
+  // Datadog ingests cleanly (fresh); AWS's latest refresh failed (cached).
+  const health: SourceHealthFields =
+    vendor === "datadog"
+      ? {
+          last_success_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+          last_attempt_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+          last_attempt_status: "success",
+          data_through: months[months.length - 1],
+          record_count: months.length,
+        }
+      : {
+          last_success_at: new Date(now - 26 * 60 * 60 * 1000).toISOString(),
+          last_attempt_at: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+          last_attempt_status: "failed",
+          data_through: months[months.length - 2],
+          record_count: months.length,
+        };
+
   return {
+    ...health,
     data: months.map((month, index) => ({
       month,
       cost: baseAmount + Math.random() * baseAmount * 0.3 + (index * baseAmount * 0.1)
@@ -189,10 +215,12 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
     if (activeTab === "forecast") {
       fetchForecastData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendor, getAccessTokenSilently]);
 
   const getBarChartData = () => {
@@ -278,21 +306,23 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
 
     return (
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-navy-700 rounded-xl p-4">
-          <p className="text-sm text-gray-400">Current Month</p>
-          <p className="text-2xl font-bold text-white">
+        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Current Month</p>
+          <p className="text-2xl font-bold text-navy-700 dark:text-white">
             ${currentMonth.cost.toLocaleString()}
           </p>
         </div>
-        <div className="bg-navy-700 rounded-xl p-4">
-          <p className="text-sm text-gray-400">Monthly Change</p>
+        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Monthly Change</p>
           <p className={`text-2xl font-bold ${monthlyChange >= 0 ? 'text-red-500' : 'text-green-500'}`}>
             {monthlyChange >= 0 ? '+' : ''}{monthlyChange.toFixed(1)}%
           </p>
         </div>
-        <div className="bg-navy-700 rounded-xl p-4">
-          <p className="text-sm text-gray-400">Total (12 months)</p>
-          <p className="text-2xl font-bold text-white">
+        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Total ({data.length} months)
+          </p>
+          <p className="text-2xl font-bold text-navy-700 dark:text-white">
             ${totalSpend.toLocaleString()}
           </p>
         </div>
@@ -394,9 +424,11 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
     );
   }
 
+  const health = deriveSourceHealth(metrics);
+
   return (
     <Card extra="!p-[20px] text-center bg-white dark:!bg-gray-800">
-      <div className="relative flex flex-row justify-between">
+      <div className="relative flex flex-row items-start justify-between">
         <div className="flex items-center">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-navy-700">
             {vendor === "datadog" ? (
@@ -409,7 +441,18 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
             {title}
           </h5>
         </div>
+        <SourceHealthBadge health={health} />
       </div>
+      {(metrics?.data_through || metrics?.record_count != null) && (
+        <p className="mt-1 text-left text-xs text-gray-600 dark:text-gray-400">
+          {metrics?.data_through
+            ? `Data through ${metrics.data_through}`
+            : "Data range unknown"}
+          {metrics?.record_count != null
+            ? ` · ${metrics.record_count} monthly records`
+            : ""}
+        </p>
+      )}
       <div className="flex flex-col">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-700 dark:text-white">
@@ -529,7 +572,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
               forecastData.forecast.length > 0 ? (
               <>
                 <div className="mb-6 grid grid-cols-3 gap-4">
-                  <div className="rounded-xl dark:bg-navy-900 p-4">
+                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
                     <p className="text-sm text-gray-700 dark:text-gray-400">Best Case Total</p>
                     <p className="text-xl text-green-500">
                       $
@@ -542,11 +585,11 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
                       </span>
                     </p>
                   </div>
-                  <div className="rounded-xl dark:bg-navy-900 p-4">
+                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
                     <p className="text-sm text-gray-700 dark:text-gray-400">
                       Trend-based Forecast Total
                     </p>
-                    <p className="text-xl text-white">
+                    <p className="text-xl text-navy-700 dark:text-white">
                       $
                       {forecastData.sums.total_forecast.toLocaleString(
                         "en-US",
@@ -557,7 +600,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
                       </span>
                     </p>
                   </div>
-                  <div className="rounded-xl dark:bg-navy-900 p-4">
+                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
                     <p className="text-sm text-gray-700 dark:text-gray-400">Worst Case Total</p>
                     <p className="text-xl text-red-500">
                       $

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "components/navbar";
 import Sidebar from "components/sidebar";
 import routes from "routes";
@@ -21,8 +21,6 @@ const getRoutes = (routes: any[]) => {
 };
 
 export default function Admin(props: { [x: string]: any }) {
-  const { ...rest } = props;
-  const location = useLocation();
   const [open, setOpen] = useState(false);
 
   return (

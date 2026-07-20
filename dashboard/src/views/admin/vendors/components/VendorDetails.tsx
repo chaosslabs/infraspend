@@ -4,7 +4,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
 import { useParams, useNavigate } from "react-router-dom";
 import { DatadogIcon, AWSIcon } from "components/icons";
-import { useBudgetPlans, BudgetEntry, BudgetPlan } from '../hooks/useBudgetPlans';
+import { useBudgetPlans, BudgetEntry } from '../hooks/useBudgetPlans';
 
 interface MonthlyMetric {
   month: string;
@@ -32,23 +32,6 @@ interface ForecastData {
   };
 }
 
-interface BudgetPlanData {
-  id: number;
-  vendor: string;
-  user_id: number;
-  budgets: {
-    budgets: BudgetEntry[];
-  };
-  created_at: string;
-  updated_at: string;
-  type: string;
-}
-
-interface BudgetPlanResponse {
-  data: BudgetPlanData[];
-  status: string;
-}
-
 interface VendorDetailsState {
   momGrowth: number;
   budgets: BudgetEntry[];
@@ -68,11 +51,10 @@ const VendorDetails: React.FC = () => {
   });
   const [metrics, setMetrics] = useState<MonthlyMetric[]>([]);
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
-  const [forecastLoading, setForecastLoading] = useState<boolean>(true);
+  const [, setForecastLoading] = useState<boolean>(true);
 
   const {
     loading: budgetLoading,
-    error: budgetError,
     budgetPlan,
     createBudgetPlan,
     fetchBudgetPlan
@@ -136,16 +118,6 @@ const VendorDetails: React.FC = () => {
       }));
     }
   }, [budgetPlan]);
-
-  const getMonthDiff = (forecastMonth: string) => {
-    const [month, year] = forecastMonth.split('-').map(Number);
-    const today = new Date();
-    const forecastDate = new Date(year, month - 1);
-    const monthDiff = (forecastDate.getFullYear() - today.getFullYear()) * 12 + 
-                     (forecastDate.getMonth() - today.getMonth());
-    // Return 0 for current month, positive numbers for future months
-    return Math.max(0, monthDiff);
-  };
 
   const calculateSimulatedCost = (
     forecast: ForecastEntry,

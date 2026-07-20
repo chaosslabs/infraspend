@@ -138,6 +138,133 @@ class TestVendorMetricsService:
         assert db_session.query(VendorMetrics).count() == 2
 
     @pytest.mark.asyncio
+    async def test_response_includes_freshness_fields_on_success(
+        self, db_session, user, mock_costs_response
+    ):
+        service = VendorMetricsService(user.id, db_session)
+        current_month = datetime.now().replace(day=1).strftime("%m-%Y")
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        assert result["last_attempt_status"] == "success"
+        assert result["last_success_at"] is not None
+        assert result["last_attempt_at"] is not None
+        assert result["record_count"] == 2
+        assert result["data_through"] == current_month
+        assert result["stale_after_hours"] == 48
+
+    @pytest.mark.asyncio
+    async def test_failed_refresh_serves_cached_data(self, db_session, user):
+        previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
+            "%m-%Y"
+        )
+        db_session.add(
+            VendorMetrics(
+                user_id=user.id,
+                vendor="aws",
+                identifier="test-config",
+                month=previous_month,
+                cost=42.0,
+            )
+        )
+        db_session.commit()
+
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.side_effect = Exception("vendor down")
+            mock_aws_service.return_value = mock_aws_instance
+
+            # Must not raise: cached data is served with a failed-attempt label.
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        assert result["last_attempt_status"] == "failed"
+        assert result["record_count"] == 1
+        assert metrics_by_month(result) == {previous_month: 42.0}
+        assert result["last_success_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_failed_refresh_without_cache_raises(self, db_session, user):
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.side_effect = Exception("vendor down")
+            mock_aws_service.return_value = mock_aws_instance
+
+            # No cached data to fall back to: the failure must surface.
+            with pytest.raises(Exception, match="Failed to get and store aws metrics"):
+                await service.get_and_store_vendor_metrics("aws", "test-config")
+
+    @pytest.mark.asyncio
+    async def test_partial_refresh_when_current_month_missing(self, db_session, user):
+        previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
+            "%m-%Y"
+        )
+        db_session.add(
+            VendorMetrics(
+                user_id=user.id,
+                vendor="aws",
+                identifier="test-config",
+                month=previous_month,
+                cost=10.0,
+            )
+        )
+        db_session.commit()
+
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            # Vendor returns data but omits the current month.
+            mock_aws_instance.get_monthly_costs.return_value = {
+                "data": [{"month": previous_month, "cost": 100.0}]
+            }
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        assert result["last_attempt_status"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_empty_source_reports_no_records(self, db_session, user):
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.return_value = {"data": []}
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        # No successful ingestion produced data; never rendered as zero spend.
+        assert result["record_count"] == 0
+        assert result["data"] == []
+        assert result["data_through"] is None
+        assert result["last_success_at"] is None
+
+    @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_invalid_vendor(self, db_session, user):
         service = VendorMetricsService(user.id, db_session)
 

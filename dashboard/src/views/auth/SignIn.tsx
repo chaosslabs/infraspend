@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import { MdDashboard, MdBarChart, MdAttachMoney } from "react-icons/md";
-import { SiDatadog, SiAmazonaws } from "react-icons/si";
+import { SiDatadog, SiAmazonaws, SiHeroku } from "react-icons/si";
 import InfraSpendLogo from "components/logo/InfraSpendLogo";
 import { trackPageView, trackEvent } from "../../utils/gtm";
 
@@ -117,7 +117,7 @@ export default function SignIn() {
           <h2 className="mb-4 text-2xl font-bold text-navy-700 dark:text-white">
             Supported Integrations
           </h2>
-          <div className="flex justify-center gap-8">
+          <div className="flex flex-wrap justify-center gap-8">
             <div className="flex items-center gap-2">
               <SiDatadog className="h-8 w-8 text-brand-500" />
               <div className="text-left">
@@ -129,6 +129,13 @@ export default function SignIn() {
               <SiAmazonaws className="h-8 w-8 text-brand-400" />
               <div className="text-left">
                 <p className="font-medium text-navy-700 dark:text-white">AWS</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Fully Supported</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <SiHeroku className="h-8 w-8 text-brand-500" />
+              <div className="text-left">
+                <p className="font-medium text-navy-700 dark:text-white">Heroku</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Fully Supported</p>
               </div>
             </div>

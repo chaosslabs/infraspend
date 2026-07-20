@@ -38,6 +38,7 @@ export default function DemoDashboard() {
           <div className="grid gap-6 md:grid-cols-2">
             <VendorMetrics vendor="datadog" identifier="Default Configuration" title="Datadog Metrics" demo={true} />
             <VendorMetrics vendor="aws" identifier="Default Configuration" title="AWS Metrics" demo={true} />
+            <VendorMetrics vendor="heroku" identifier="Default Configuration" title="Heroku Metrics" demo={true} />
           </div>
         </div>
       </main>

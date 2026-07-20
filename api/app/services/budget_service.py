@@ -6,6 +6,8 @@ import logging
 from app.models import BudgetPlan, User
 from app.routers.models import BudgetPlanCreate
 
+SUPPORTED_VENDORS = ["datadog", "aws", "heroku"]
+
 
 class BudgetService:
     def __init__(self, db: Session, user: User):
@@ -15,7 +17,7 @@ class BudgetService:
     def create_budget_plan(self, plan_data: BudgetPlanCreate) -> BudgetPlan:
         """Create or update a budget plan for the user"""
         # Validate vendor
-        if plan_data.vendor.lower() not in ["datadog", "aws"]:
+        if plan_data.vendor.lower() not in SUPPORTED_VENDORS:
             raise HTTPException(
                 status_code=400, detail=f"Invalid vendor: {plan_data.vendor}"
             )
@@ -70,7 +72,7 @@ class BudgetService:
         query = self.db.query(BudgetPlan).filter(BudgetPlan.user_id == self.user.id)
 
         if vendor:
-            if vendor.lower() not in ["datadog", "aws"]:
+            if vendor.lower() not in SUPPORTED_VENDORS:
                 raise HTTPException(status_code=400, detail=f"Invalid vendor: {vendor}")
             query = query.filter(BudgetPlan.vendor == vendor.lower())
 

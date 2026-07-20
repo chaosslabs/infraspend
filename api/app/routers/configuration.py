@@ -2,7 +2,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.models import User, DatadogAPIConfiguration, AWSAPIConfiguration
+from app.models import (
+    User,
+    DatadogAPIConfiguration,
+    AWSAPIConfiguration,
+    HerokuAPIConfiguration,
+)
 from app.routers.models import APIConfigResponse
 from app.helpers.database import get_db
 from app.helpers.auth import get_authenticated_user
@@ -23,6 +28,12 @@ class DatadogConfig(BaseModel):
 class AWSConfig(BaseModel):
     aws_access_key_id: str
     aws_secret_access_key: str
+    identifier: str = "Default Configuration"
+
+
+class HerokuConfig(BaseModel):
+    api_key: str
+    team_name_or_id: str | None = None
     identifier: str = "Default Configuration"
 
 
@@ -84,6 +95,30 @@ async def configure_aws(
         )
 
 
+@router.post("/heroku")
+async def configure_heroku(
+    config: HerokuConfig,
+    user: User = Depends(get_user),
+    db: Session = Depends(get_db),
+) -> APIConfigResponse:
+    secrets_data = {
+        "HEROKU_API_KEY": config.api_key,
+        "HEROKU_TEAM_NAME_OR_ID": config.team_name_or_id,
+    }
+
+    config_service = ConfigurationService(db, user)
+    try:
+        config_id, message = config_service.configure_vendor(
+            "heroku", secrets_data, config.identifier
+        )
+
+        return APIConfigResponse(id=config_id, type="heroku", message=message)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to configure Heroku: {str(e)}"
+        )
+
+
 @router.get("/list")
 async def list_api_configurations(
     user: User = Depends(get_user), db: Session = Depends(get_db)
@@ -97,6 +132,12 @@ async def list_api_configurations(
     aws_configs = (
         db.query(AWSAPIConfiguration)
         .filter(AWSAPIConfiguration.user_id == user.id)
+        .all()
+    )
+
+    heroku_configs = (
+        db.query(HerokuAPIConfiguration)
+        .filter(HerokuAPIConfiguration.user_id == user.id)
         .all()
     )
 
@@ -116,6 +157,16 @@ async def list_api_configurations(
             {
                 "id": config.id,
                 "type": "aws",
+                "identifier": config.identifier,
+                "created_at": config.created_at,
+                "updated_at": config.updated_at,
+            }
+        )
+    for config in heroku_configs:
+        configurations.append(
+            {
+                "id": config.id,
+                "type": "heroku",
                 "identifier": config.identifier,
                 "created_at": config.created_at,
                 "updated_at": config.updated_at,

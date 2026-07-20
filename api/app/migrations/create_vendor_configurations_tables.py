@@ -51,6 +51,24 @@ def upgrade():
                 )
             )
 
+            # Create Heroku configurations table
+            logger.info("Creating heroku_api_configurations table...")
+            conn.execute(
+                text(
+                    """
+                CREATE TABLE IF NOT EXISTS heroku_api_configurations (
+                    id SERIAL PRIMARY KEY,
+                    type VARCHAR,
+                    user_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    api_key VARCHAR,
+                    team_name_or_id VARCHAR
+                )
+            """
+                )
+            )
+
             logger.info("Vendor configuration tables created successfully")
     except Exception as e:
         logger.error(f"Migration failed: {e}")
@@ -66,6 +84,7 @@ def downgrade():
             logger.info("Dropping vendor-specific configuration tables...")
             conn.execute(text("DROP TABLE IF EXISTS datadog_api_configurations"))
             conn.execute(text("DROP TABLE IF EXISTS aws_api_configurations"))
+            conn.execute(text("DROP TABLE IF EXISTS heroku_api_configurations"))
 
             # Recreate original table
             logger.info("Recreating original api_configurations table...")

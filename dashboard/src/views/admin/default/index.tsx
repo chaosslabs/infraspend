@@ -4,6 +4,12 @@ import VendorMetrics from "./components/VendorMetrics";
 import { useAPIConfigurations } from "./components/hooks/useAPIConfigurations";
 import { LoadingState } from "components/loading/LoadingState";
 
+const VENDOR_TITLES: Record<string, string> = {
+  datadog: "Datadog Metrics",
+  aws: "AWS Metrics",
+  heroku: "Heroku Metrics",
+};
+
 const Dashboard = () => {
   const { configurations, loading } = useAPIConfigurations();
   
@@ -38,27 +44,17 @@ const Dashboard = () => {
     <div className="mt-3">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {configurations.map((config) => {
-          if (config.type === "datadog") {
-            return (
-              <VendorMetrics
-                key={config.id}
-                identifier={config.identifier}
-                vendor="datadog"
-                title="Datadog Metrics"
-              />
-            );
-          }
-          if (config.type === "aws") {
-            return (
-              <VendorMetrics
-                key={config.id}
-                identifier={config.identifier}
-                vendor="aws"
-                title="AWS Metrics"
-              />
-            );
-          }
-          return null;
+          const title = VENDOR_TITLES[config.type];
+          if (!title) return null;
+
+          return (
+            <VendorMetrics
+              key={`${config.type}-${config.id}`}
+              identifier={config.identifier}
+              vendor={config.type as "datadog" | "aws" | "heroku"}
+              title={title}
+            />
+          );
         })}
       </div>
     </div>

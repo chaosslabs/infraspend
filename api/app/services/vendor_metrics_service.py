@@ -235,13 +235,9 @@ class VendorMetricsService:
 
             # Freshness derived from stored write timestamps. Missing data stays
             # absent (never zero-filled) so a gap cannot read as $0 spend.
-            last_success_at = max(
-                (m.updated_at for m in all_metrics), default=None
-            )
+            last_success_at = max((m.updated_at for m in all_metrics), default=None)
             data_through = (
-                max(data, key=lambda d: datetime.strptime(d["month"], "%m-%Y"))[
-                    "month"
-                ]
+                max(data, key=lambda d: datetime.strptime(d["month"], "%m-%Y"))["month"]
                 if data
                 else None
             )

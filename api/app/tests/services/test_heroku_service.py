@@ -27,7 +27,12 @@ def test_get_monthly_costs_uses_account_invoices(mock_db):
     response.status_code = 200
     response.json.return_value = [
         {"period_start": "12/01/2023", "total": 99.99},
-        {"period_start": "01/01/2024", "total": 120.50},
+        {
+            "period_start": "01/01/2024",
+            "period_end": "02/01/2024",
+            "total": 120.50,
+            "currency": "USD",
+        },
         {"period_start": "02/01/2024", "charges_total": 130.25},
         {"period_start": "04/01/2024", "total": 150.00},
     ]
@@ -42,8 +47,22 @@ def test_get_monthly_costs_uses_account_invoices(mock_db):
 
     assert result == {
         "data": [
-            {"month": "01-2024", "cost": 120.5},
-            {"month": "02-2024", "cost": 130.25},
+            {
+                "month": "01-2024",
+                "cost": 120.5,
+                "provider": "heroku",
+                "period_start": "2024-01-01",
+                "period_end": "2024-02-01",
+                "currency": "USD",
+            },
+            {
+                "month": "02-2024",
+                "cost": 130.25,
+                "provider": "heroku",
+                "period_start": "2024-02-01",
+                "period_end": "2024-03-01",
+                "currency": None,
+            },
         ]
     }
     requests_get.assert_called_once_with(
@@ -65,7 +84,7 @@ def test_get_monthly_costs_uses_team_invoices_and_normalizes_cents(mock_db):
     response = Mock()
     response.status_code = 200
     response.json.return_value = [
-        {"period_start": "01/01/2024", "total": 100000},
+        {"period_start": "01/01/2024", "total": 100000, "currency_code": "USD"},
         {"period_start": "02/01/2024", "charges_total": 75050},
     ]
 
@@ -79,8 +98,22 @@ def test_get_monthly_costs_uses_team_invoices_and_normalizes_cents(mock_db):
 
     assert result == {
         "data": [
-            {"month": "01-2024", "cost": 1000.0},
-            {"month": "02-2024", "cost": 750.5},
+            {
+                "month": "01-2024",
+                "cost": 1000.0,
+                "provider": "heroku",
+                "period_start": "2024-01-01",
+                "period_end": "2024-02-01",
+                "currency": "USD",
+            },
+            {
+                "month": "02-2024",
+                "cost": 750.5,
+                "provider": "heroku",
+                "period_start": "2024-02-01",
+                "period_end": "2024-03-01",
+                "currency": None,
+            },
         ]
     }
     requests_get.assert_called_once_with(
@@ -98,3 +131,30 @@ def test_missing_heroku_configuration_raises_error(mock_db):
 
     with pytest.raises(Exception, match="No Heroku configuration found"):
         HerokuService(1, mock_db, "Missing Configuration")
+
+
+def test_get_monthly_costs_skips_malformed_invoices(mock_db, caplog):
+    config = Mock(spec=HerokuAPIConfiguration)
+    config.api_key = "heroku-secret-id"
+    config.team_name_or_id = None
+    configure_query(mock_db, config)
+
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = [
+        {"period_start": "01/01/2024"},
+        {"total": 10.0},
+    ]
+
+    with patch("app.services.heroku_service.SecretsService") as secrets, patch(
+        "app.services.heroku_service.requests.get", return_value=response
+    ):
+        secrets.return_value.get_customer_secret.return_value = "heroku-token"
+
+        service = HerokuService(1, mock_db, "Default Configuration")
+        caplog.set_level("WARNING")
+        result = service.get_monthly_costs("01-2024", "01-2024")
+
+    assert result == {"data": []}
+    assert "Skipping malformed Heroku invoice row" in caplog.text
+    assert "Skipping Heroku invoice without usable period" in caplog.text

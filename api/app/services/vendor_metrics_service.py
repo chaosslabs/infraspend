@@ -10,6 +10,7 @@ from app.models import (
 from app.services.aws_service import AWSService
 from app.services.datadog_service import DatadogService
 from app.services.heroku_service import HerokuService
+from app.services.monthly_costs import validate_monthly_cost_record
 from typing import List, Dict
 from datetime import datetime, timedelta
 import inspect
@@ -304,6 +305,9 @@ class VendorMetricsService:
     def _store_metrics(self, vendor: str, identifier: str, cost_data: list):
         """Store metrics in the database"""
         for cost_item in cost_data:
+            cost_record = validate_monthly_cost_record(
+                cost_item, expected_provider=vendor.lower()
+            )
             # Check if metric already exists
             existing_metric = (
                 self.db.query(VendorMetrics)
@@ -312,7 +316,7 @@ class VendorMetricsService:
                         VendorMetrics.user_id == self.user_id,
                         VendorMetrics.vendor == vendor.lower(),
                         VendorMetrics.identifier == identifier,
-                        VendorMetrics.month == cost_item["month"],
+                        VendorMetrics.month == cost_record["month"],
                     )
                 )
                 .first()
@@ -320,15 +324,15 @@ class VendorMetricsService:
 
             if existing_metric:
                 # Update existing metric
-                existing_metric.cost = cost_item["cost"]
+                existing_metric.cost = cost_record["cost"]
             else:
                 # Create new metric
                 metric = VendorMetrics(
                     user_id=self.user_id,
                     vendor=vendor.lower(),
                     identifier=identifier,
-                    month=cost_item["month"],
-                    cost=cost_item["cost"],
+                    month=cost_record["month"],
+                    cost=cost_record["cost"],
                 )
                 self.db.add(metric)
 

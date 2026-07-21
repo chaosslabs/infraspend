@@ -4,6 +4,7 @@ from botocore.exceptions import ClientError
 from ..helpers.secrets_service import SecretsService
 from sqlalchemy.orm import Session
 from app.models import AWSAPIConfiguration
+from app.services.monthly_costs import build_monthly_cost_record
 import logging
 
 logger = logging.getLogger(__name__)
@@ -83,16 +84,28 @@ class AWSService:
 
             cost_data = []
             for result in response["ResultsByTime"]:
-                month = datetime.strptime(
-                    result["TimePeriod"]["Start"], "%Y-%m-%d"
-                ).strftime("%m-%Y")
-                cost = float(result["Total"]["UnblendedCost"]["Amount"])
-                cost_data.append(
-                    {
-                        "month": month,
-                        "cost": round(cost, 2),
-                    }
-                )
+                try:
+                    time_period = result["TimePeriod"]
+                    unblended_cost = result["Total"]["UnblendedCost"]
+                    period_start = datetime.strptime(
+                        time_period["Start"], "%Y-%m-%d"
+                    ).date()
+                    period_end = datetime.strptime(
+                        time_period["End"], "%Y-%m-%d"
+                    ).date()
+                    cost_data.append(
+                        build_monthly_cost_record(
+                            provider="aws",
+                            period_start=period_start,
+                            period_end=period_end,
+                            cost=unblended_cost["Amount"],
+                            currency=unblended_cost.get("Unit"),
+                        )
+                    )
+                except (KeyError, ValueError) as e:
+                    raise ValueError(
+                        "Malformed AWS Cost Explorer monthly cost row"
+                    ) from e
 
             return {"data": cost_data}
 

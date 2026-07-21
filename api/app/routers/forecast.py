@@ -17,6 +17,7 @@ from app.services.forecast_service import ForecastService
 from app.services.datadog_service import DatadogService
 from app.services.aws_service import AWSService
 from app.services.heroku_service import HerokuService
+from app.services.monthly_costs import validate_monthly_cost_record
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +128,13 @@ async def get_vendor_forecast(
         if isinstance(historical_data, JSONResponse):
             return historical_data
 
+        historical_records = [
+            validate_monthly_cost_record(item, expected_provider=vendor_name)
+            for item in historical_data["data"]
+        ]
+
         # Generate forecast using the ForecastService
-        forecast_data = ForecastService.predict_mom_growth(historical_data["data"])
+        forecast_data = ForecastService.predict_mom_growth(historical_records)
 
         if format == "csv":
             output = io.StringIO()
@@ -186,7 +192,7 @@ async def get_vendor_forecast(
         return JSONResponse(
             status_code=200,
             content={
-                "historical": historical_data["data"],
+                "historical": historical_records,
                 "forecast": forecast_data["forecast_data"],
                 "sums": forecast_data["sums"],
                 "growth_rates": forecast_data["growth_rates"],

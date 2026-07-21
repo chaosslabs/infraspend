@@ -13,6 +13,7 @@ from app.models import (
     User,
     VendorMetrics,
 )
+from app.services.monthly_costs import build_monthly_cost_record
 from app.services.vendor_metrics_service import VendorMetricsService
 
 
@@ -49,15 +50,31 @@ def shift_month(date: datetime, months: int) -> datetime:
 
 
 @pytest.fixture
-def mock_costs_response():
+def cost_response_for():
     current_month = datetime.now().replace(day=1)
     previous_month = shift_month(current_month, -1)
-    return {
-        "data": [
-            {"month": previous_month.strftime("%m-%Y"), "cost": 100.0},
-            {"month": current_month.strftime("%m-%Y"), "cost": 200.0},
-        ]
-    }
+
+    def _factory(provider):
+        return {
+            "data": [
+                build_monthly_cost_record(
+                    provider=provider,
+                    period_start=previous_month.date(),
+                    period_end=shift_month(previous_month, 1).date(),
+                    cost=100.0,
+                    currency="USD" if provider == "aws" else None,
+                ),
+                build_monthly_cost_record(
+                    provider=provider,
+                    period_start=current_month.date(),
+                    period_end=shift_month(current_month, 1).date(),
+                    cost=200.0,
+                    currency="USD" if provider == "aws" else None,
+                ),
+            ]
+        }
+
+    return _factory
 
 
 def metrics_by_month(response):
@@ -102,10 +119,11 @@ def add_heroku_config(db_session, user, identifier="test-config"):
 class TestVendorMetricsService:
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_aws_success(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
+        mock_costs_response = cost_response_for("aws")
 
         with patch(
             "app.services.vendor_metrics_service.AWSService",
@@ -123,10 +141,11 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_datadog_success(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_datadog_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
+        mock_costs_response = cost_response_for("datadog")
 
         with patch(
             "app.services.vendor_metrics_service.DatadogService",
@@ -146,10 +165,11 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_heroku_success(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_heroku_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
+        mock_costs_response = cost_response_for("heroku")
 
         with patch(
             "app.services.vendor_metrics_service.HerokuService",
@@ -167,10 +187,11 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_update_existing(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
+        mock_costs_response = cost_response_for("aws")
         existing_month = mock_costs_response["data"][0]["month"]
         existing_metric = VendorMetrics(
             user_id=user.id,
@@ -199,10 +220,11 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_response_includes_freshness_fields_on_success(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
+        mock_costs_response = cost_response_for("aws")
         current_month = datetime.now().replace(day=1).strftime("%m-%Y")
 
         with patch(
@@ -277,9 +299,8 @@ class TestVendorMetricsService:
     @pytest.mark.asyncio
     async def test_partial_refresh_when_current_month_missing(self, db_session, user):
         add_aws_config(db_session, user)
-        previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
-            "%m-%Y"
-        )
+        previous_month_date = shift_month(datetime.now().replace(day=1), -1)
+        previous_month = previous_month_date.strftime("%m-%Y")
         db_session.add(
             VendorMetrics(
                 user_id=user.id,
@@ -300,7 +321,15 @@ class TestVendorMetricsService:
             mock_aws_instance = Mock()
             # Vendor returns data but omits the current month.
             mock_aws_instance.get_monthly_costs.return_value = {
-                "data": [{"month": previous_month, "cost": 100.0}]
+                "data": [
+                    build_monthly_cost_record(
+                        provider="aws",
+                        period_start=previous_month_date.date(),
+                        period_end=shift_month(previous_month_date, 1).date(),
+                        cost=100.0,
+                        currency="USD",
+                    )
+                ]
             }
             mock_aws_service.return_value = mock_aws_instance
 
@@ -338,11 +367,14 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_batch_update_all_vendor_metrics_success(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_aws_config(db_session, user, "test-aws")
         add_datadog_config(db_session, user, "test-datadog")
         add_heroku_config(db_session, user, "test-heroku")
+        aws_response = cost_response_for("aws")
+        datadog_response = cost_response_for("datadog")
+        heroku_response = cost_response_for("heroku")
 
         with patch(
             "app.services.vendor_metrics_service.AWSService",
@@ -355,15 +387,15 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_heroku_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_aws_instance.get_monthly_costs.return_value = aws_response
             mock_aws_service.return_value = mock_aws_instance
 
             mock_dd_instance = Mock()
-            mock_dd_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_dd_instance.get_monthly_costs.return_value = datadog_response
             mock_dd_service.return_value = mock_dd_instance
 
             mock_heroku_instance = Mock()
-            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_instance.get_monthly_costs.return_value = heroku_response
             mock_heroku_service.return_value = mock_heroku_instance
 
             results = await VendorMetricsService.batch_update_all_vendor_metrics(
@@ -378,11 +410,13 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_batch_update_all_vendor_metrics_partial_failure(
-        self, db_session, user, mock_costs_response
+        self, db_session, user, cost_response_for
     ):
         add_aws_config(db_session, user, "test-aws")
         add_datadog_config(db_session, user, "test-datadog")
         add_heroku_config(db_session, user, "test-heroku")
+        aws_response = cost_response_for("aws")
+        heroku_response = cost_response_for("heroku")
 
         with patch(
             "app.services.vendor_metrics_service.AWSService",
@@ -395,7 +429,7 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_heroku_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_aws_instance.get_monthly_costs.return_value = aws_response
             mock_aws_service.return_value = mock_aws_instance
 
             mock_dd_instance = Mock()
@@ -405,7 +439,7 @@ class TestVendorMetricsService:
             mock_dd_service.return_value = mock_dd_instance
 
             mock_heroku_instance = Mock()
-            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_instance.get_monthly_costs.return_value = heroku_response
             mock_heroku_service.return_value = mock_heroku_instance
 
             results = await VendorMetricsService.batch_update_all_vendor_metrics(

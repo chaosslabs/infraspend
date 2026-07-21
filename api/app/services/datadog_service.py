@@ -7,6 +7,7 @@ from app.helpers.secrets_service import SecretsService
 from sqlalchemy.orm import Session
 import requests
 from app.models import DatadogAPIConfiguration
+from app.services.monthly_costs import add_month, build_monthly_cost_record
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,36 @@ class DatadogService:
         self.app_key = secrets.get_customer_secret(config.app_key)
         self.api_key = secrets.get_customer_secret(config.api_key)
         self.base_url = "https://api.datadoghq.com/api/v1"
+
+    @staticmethod
+    def _parse_usage_month_entry(entry: dict[str, Any]):
+        attributes = entry.get("attributes")
+        if not isinstance(attributes, dict):
+            raise ValueError("missing attributes")
+
+        date_value = attributes.get("date")
+        if not isinstance(date_value, str):
+            raise ValueError("missing attributes.date")
+
+        try:
+            period_start = datetime.fromisoformat(
+                date_value.replace("Z", "+00:00")
+            ).date()
+        except ValueError as exc:
+            raise ValueError("attributes.date must be ISO-like") from exc
+
+        # Datadog reports one date anchor per monthly row. Preserve that start
+        # and derive the exclusive next-month boundary for downstream lineage.
+        period_start = period_start.replace(day=1)
+        period_end = add_month(period_start)
+
+        return build_monthly_cost_record(
+            provider="datadog",
+            period_start=period_start,
+            period_end=period_end,
+            cost=attributes.get("total_cost"),
+            currency=None,
+        )
 
     def get_monthly_costs(
         self, start_date: str | None = None, end_date: str | None = None
@@ -69,19 +100,12 @@ class DatadogService:
                 monthly_costs = []
                 if "data" in data and isinstance(data["data"], list):
                     for entry in data["data"]:
-                        date = datetime.strptime(
-                            entry["attributes"]["date"], "%Y-%m-%dT%H:%M:%SZ"
-                        )
-                        monthly_costs.append(
-                            {
-                                "month": date.strftime(
-                                    "%m-%Y"
-                                ),  # Convert back to MM-YYYY for consistency
-                                "cost": round(
-                                    float(entry["attributes"]["total_cost"]), 2
-                                ),
-                            }
-                        )
+                        try:
+                            monthly_costs.append(self._parse_usage_month_entry(entry))
+                        except ValueError as exc:
+                            logger.warning(
+                                "Skipping malformed Datadog cost row: %s", exc
+                            )
                 return {"data": monthly_costs}
             else:
                 error_msg = (

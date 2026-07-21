@@ -1,7 +1,8 @@
 """Heroku service module for handling Heroku Platform API interactions."""
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Dict
 from urllib.parse import quote
 
@@ -10,6 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.helpers.secrets_service import SecretsService
 from app.models import HerokuAPIConfiguration
+from app.services.monthly_costs import (
+    add_month,
+    build_monthly_cost_record,
+    decimal_cost,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,30 +47,60 @@ class HerokuService:
             raise Exception("Heroku API key not found")
 
     @staticmethod
-    def _add_months(date: datetime, months: int) -> datetime:
-        month_index = date.month - 1 + months
-        year = date.year + month_index // 12
+    def _add_months(date_value: date, months: int) -> date:
+        month_index = date_value.month - 1 + months
+        year = date_value.year + month_index // 12
         month = month_index % 12 + 1
-        return datetime(year, month, 1)
+        return date(year, month, 1)
 
     @staticmethod
-    def _month_start(month_year: str) -> datetime:
+    def _month_start(month_year: str) -> date:
         month, year = month_year.split("-")
-        return datetime(int(year), int(month), 1)
+        return date(int(year), int(month), 1)
 
     @staticmethod
-    def _parse_invoice_month(invoice: dict[str, Any]) -> datetime | None:
+    def _parse_heroku_date(value: Any) -> date | None:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if not isinstance(value, str):
+            return None
+
+        for date_format in ("%m/%d/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except ValueError:
+                pass
+
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        except ValueError:
+            return None
+
+    @classmethod
+    def _parse_invoice_period(cls, invoice: dict[str, Any]) -> tuple[date, date] | None:
         period_start = invoice.get("period_start")
-        if period_start:
-            return datetime.strptime(period_start, "%m/%d/%Y").replace(day=1)
+        start = cls._parse_heroku_date(period_start)
 
-        created_at = invoice.get("created_at")
-        if created_at:
-            return datetime.fromisoformat(created_at.replace("Z", "+00:00")).replace(
-                day=1, tzinfo=None
-            )
+        if not start:
+            created_at = invoice.get("created_at")
+            start = cls._parse_heroku_date(created_at)
+            if start:
+                start = start.replace(day=1)
 
-        return None
+        if not start:
+            return None
+
+        end = cls._parse_heroku_date(invoice.get("period_end"))
+        if not end:
+            # Some Heroku invoice payloads expose only a monthly anchor. In that
+            # case derive the exclusive next-month boundary and keep it explicit.
+            end = add_month(start.replace(day=1))
+
+        return start, end
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -78,15 +114,29 @@ class HerokuService:
             return f"{self.base_url}/teams/{team}/invoices"
         return f"{self.base_url}/account/invoices"
 
-    def _invoice_total(self, invoice: dict[str, Any]) -> float:
-        total = invoice.get("total", invoice.get("charges_total", 0))
-        total_cost = float(total or 0)
+    def _invoice_total(self, invoice: dict[str, Any]) -> Decimal:
+        if "total" in invoice:
+            total = invoice["total"]
+        elif "charges_total" in invoice:
+            total = invoice["charges_total"]
+        else:
+            raise ValueError("missing invoice total")
+
+        total_cost = decimal_cost(total, "invoice total")
 
         # Team invoice totals are returned as integer cents by the Platform API.
         if self.team_name_or_id:
-            total_cost = total_cost / 100
+            total_cost = total_cost / Decimal("100")
 
-        return round(total_cost, 2)
+        return total_cost
+
+    @staticmethod
+    def _invoice_currency(invoice: dict[str, Any]) -> str | None:
+        for key in ("currency", "currency_code", "total_currency"):
+            currency = invoice.get(key)
+            if currency:
+                return str(currency)
+        return None
 
     def get_monthly_costs(
         self, start_date: str | None = None, end_date: str | None = None
@@ -126,21 +176,29 @@ class HerokuService:
 
             monthly_costs = []
             for invoice in response.json():
-                invoice_month = self._parse_invoice_month(invoice)
-                if not invoice_month:
+                invoice_period = self._parse_invoice_period(invoice)
+                if not invoice_period:
+                    logger.warning("Skipping Heroku invoice without usable period")
                     continue
 
-                if start_month <= invoice_month <= end_month:
-                    monthly_costs.append(
-                        {
-                            "month": invoice_month.strftime("%m-%Y"),
-                            "cost": self._invoice_total(invoice),
-                        }
-                    )
+                period_start, period_end = invoice_period
+                if not (start_month <= period_start.replace(day=1) <= end_month):
+                    continue
 
-            monthly_costs.sort(
-                key=lambda item: datetime.strptime(item["month"], "%m-%Y")
-            )
+                try:
+                    monthly_costs.append(
+                        build_monthly_cost_record(
+                            provider="heroku",
+                            period_start=period_start,
+                            period_end=period_end,
+                            cost=self._invoice_total(invoice),
+                            currency=self._invoice_currency(invoice),
+                        )
+                    )
+                except ValueError as exc:
+                    logger.warning("Skipping malformed Heroku invoice row: %s", exc)
+
+            monthly_costs.sort(key=lambda item: item["period_start"])
 
             return {"data": monthly_costs}
         except Exception as e:

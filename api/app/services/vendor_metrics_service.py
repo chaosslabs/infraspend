@@ -14,14 +14,33 @@ from typing import List, Dict
 from datetime import datetime, timedelta
 import inspect
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_VENDORS = {"aws", "datadog", "heroku"}
 
+# Freshness threshold used by the dashboard to decide when a last-successful
+# ingestion is "stale". Documented and configurable rather than hidden in UI
+# copy; the backend refreshes the current month once its data is older than a
+# day, so 48h leaves one full refresh cycle of tolerance. Returned in the
+# metrics payload so the API and dashboard share a single source of truth.
+FRESHNESS_STALE_HOURS = int(os.getenv("METRIC_FRESHNESS_STALE_HOURS", "48"))
+
 
 class VendorConfigurationNotFound(Exception):
     pass
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """Serialise a naive UTC datetime as an explicit-UTC ISO string.
+
+    Stored timestamps are naive UTC (``datetime.utcnow``); appending ``Z``
+    ensures clients parse them as UTC rather than local time.
+    """
+    if dt is None:
+        return None
+    return dt.replace(microsecond=0).isoformat() + "Z"
 
 
 class VendorMetricsService:
@@ -103,6 +122,8 @@ class VendorMetricsService:
                 .all()
             )
 
+            had_cache = len(stored_metrics) > 0
+
             # Calculate date range for last 11 months
             end_date = datetime.now()
             start_date = end_date - timedelta(days=365)
@@ -132,37 +153,65 @@ class VendorMetricsService:
                 # If current month data is older than 1 day, add it to missing months
                 missing_months.add(current_month)
 
+            # Track the outcome of the refresh attempt so cached, partial, or
+            # failed source data can never look silently current downstream.
+            attempt_status = "success"
+
             if missing_months:
-                # Get costs for missing months
-                earliest_missing = min(
-                    missing_months, key=lambda x: datetime.strptime(x, "%m-%Y")
-                )
-                latest_missing = max(
-                    missing_months, key=lambda x: datetime.strptime(x, "%m-%Y")
-                )
+                try:
+                    # Get costs for missing months
+                    earliest_missing = min(
+                        missing_months, key=lambda x: datetime.strptime(x, "%m-%Y")
+                    )
+                    latest_missing = max(
+                        missing_months, key=lambda x: datetime.strptime(x, "%m-%Y")
+                    )
 
-                # If current month needs refresh, also get previous month to ensure complete data
-                if current_month in missing_months:
-                    earliest_date = datetime.strptime(earliest_missing, "%m-%Y")
+                    # If current month needs refresh, also get previous month to
+                    # ensure complete data
+                    if current_month in missing_months:
+                        earliest_date = datetime.strptime(earliest_missing, "%m-%Y")
 
-                    if (earliest_date - start_date).days > 0:
-                        earliest_missing = (
-                            earliest_date - timedelta(days=32)
-                        ).strftime("%m-%Y")
-                    else:
-                        earliest_missing = earliest_date.strftime("%m-%Y")
+                        if (earliest_date - start_date).days > 0:
+                            earliest_missing = (
+                                earliest_date - timedelta(days=32)
+                            ).strftime("%m-%Y")
+                        else:
+                            earliest_missing = earliest_date.strftime("%m-%Y")
 
-                costs = self._get_vendor_costs(
-                    vendor,
-                    identifier,
-                    start_date=earliest_missing,
-                    end_date=latest_missing,
-                )
-                if inspect.isawaitable(costs):
-                    costs = await costs
+                    costs = self._get_vendor_costs(
+                        vendor,
+                        identifier,
+                        start_date=earliest_missing,
+                        end_date=latest_missing,
+                    )
+                    if inspect.isawaitable(costs):
+                        costs = await costs
 
-                # Store new metrics
-                self._store_metrics(vendor, identifier, costs["data"])
+                    # Store new metrics
+                    self._store_metrics(vendor, identifier, costs["data"])
+
+                    # If we asked to refresh the latest month but the vendor did
+                    # not return it, the refresh only partially succeeded.
+                    returned_months = {c["month"] for c in costs.get("data", [])}
+                    if (
+                        current_month in missing_months
+                        and current_month not in returned_months
+                    ):
+                        attempt_status = "partial"
+                except Exception as refresh_error:
+                    if not had_cache:
+                        # No cached data to fall back to; surface the failure.
+                        raise
+                    # Serve cached metrics, but mark the latest attempt as failed
+                    # so the dashboard can label the data as stale/cached.
+                    logger.warning(
+                        "Refresh for %s/%s failed; serving cached metrics: %s",
+                        vendor,
+                        identifier,
+                        refresh_error,
+                    )
+                    attempt_status = "failed"
 
             # Return all metrics (stored + new)
             all_metrics = (
@@ -178,13 +227,30 @@ class VendorMetricsService:
                 .all()
             )
 
+            data = [
+                {"month": metric.month, "cost": float(metric.cost)}
+                for metric in all_metrics
+                if datetime.strptime(metric.month, "%m-%Y").year
+                > datetime.now().year - 2
+            ]
+
+            # Freshness derived from stored write timestamps. Missing data stays
+            # absent (never zero-filled) so a gap cannot read as $0 spend.
+            last_success_at = max((m.updated_at for m in all_metrics), default=None)
+            data_through = (
+                max(data, key=lambda d: datetime.strptime(d["month"], "%m-%Y"))["month"]
+                if data
+                else None
+            )
+
             return {
-                "data": [
-                    {"month": metric.month, "cost": float(metric.cost)}
-                    for metric in all_metrics
-                    if datetime.strptime(metric.month, "%m-%Y").year
-                    > datetime.now().year - 2
-                ]
+                "data": data,
+                "last_success_at": _iso_utc(last_success_at),
+                "last_attempt_at": _iso_utc(datetime.utcnow()),
+                "last_attempt_status": attempt_status,
+                "data_through": data_through,
+                "record_count": len(data),
+                "stale_after_hours": FRESHNESS_STALE_HOURS,
             }
 
         except (ValueError, VendorConfigurationNotFound):

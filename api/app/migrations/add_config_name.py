@@ -33,6 +33,17 @@ def upgrade():
                 )
             )
 
+            # Add identifier column to heroku configurations
+            logger.info("Adding identifier column to heroku_api_configurations...")
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE heroku_api_configurations
+                    ADD COLUMN IF NOT EXISTS identifier VARCHAR DEFAULT 'Default Configuration';
+                    """
+                )
+            )
+
             # Remove old unique constraints
             logger.info("Removing old unique constraints...")
             conn.execute(
@@ -49,6 +60,15 @@ def upgrade():
                     """
                     ALTER TABLE aws_api_configurations
                     DROP CONSTRAINT IF EXISTS uq_aws_user;
+                    """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE heroku_api_configurations
+                    DROP CONSTRAINT IF EXISTS uq_heroku_user;
                     """
                 )
             )
@@ -84,6 +104,24 @@ def upgrade():
                         ) THEN
                             ALTER TABLE aws_api_configurations
                             ADD CONSTRAINT uq_aws_user_identifier
+                            UNIQUE (user_id, identifier);
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = 'uq_heroku_user_identifier'
+                        ) THEN
+                            ALTER TABLE heroku_api_configurations
+                            ADD CONSTRAINT uq_heroku_user_identifier
                             UNIQUE (user_id, identifier);
                         END IF;
                     END $$;

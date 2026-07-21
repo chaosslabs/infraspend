@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
 import { useParams, useNavigate } from "react-router-dom";
-import { DatadogIcon, AWSIcon } from "components/icons";
+import { DatadogIcon, AWSIcon, HerokuIcon } from "components/icons";
 import { useBudgetPlans, BudgetEntry } from '../hooks/useBudgetPlans';
 
 interface MonthlyMetric {
@@ -39,6 +39,18 @@ interface VendorDetailsState {
   error: string | null;
 }
 
+const getVendorIcon = (vendor?: string) => {
+  if (vendor === "datadog") return DatadogIcon;
+  if (vendor === "heroku") return HerokuIcon;
+  return AWSIcon;
+};
+
+const getVendorLabel = (vendor?: string) => {
+  if (vendor === "aws") return "AWS";
+  if (!vendor) return "";
+  return vendor.charAt(0).toUpperCase() + vendor.slice(1);
+};
+
 const VendorDetails: React.FC = () => {
   const { vendor } = useParams<{ vendor: string }>();
   const navigate = useNavigate();
@@ -52,6 +64,8 @@ const VendorDetails: React.FC = () => {
   const [metrics, setMetrics] = useState<MonthlyMetric[]>([]);
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const [, setForecastLoading] = useState<boolean>(true);
+  const VendorIcon = getVendorIcon(vendor);
+  const vendorLabel = getVendorLabel(vendor);
 
   const {
     loading: budgetLoading,
@@ -258,14 +272,10 @@ const VendorDetails: React.FC = () => {
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-navy-700">
-            {vendor === "datadog" ? (
-              <DatadogIcon className="h-8 w-8 text-brand-500 dark:text-white" />
-            ) : (
-              <AWSIcon className="h-8 w-8 text-brand-500 dark:text-white" />
-            )}
+            <VendorIcon className="h-8 w-8 text-brand-500 dark:text-white" />
           </div>
           <h2 className="ml-4 text-2xl font-bold text-navy-700 dark:text-white">
-            {vendor?.charAt(0).toUpperCase() + vendor?.slice(1)} Details
+            {vendorLabel} Details
           </h2>
         </div>
         <button
@@ -499,4 +509,4 @@ const VendorDetails: React.FC = () => {
   );
 };
 
-export default VendorDetails; 
+export default VendorDetails;

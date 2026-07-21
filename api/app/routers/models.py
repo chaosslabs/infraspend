@@ -13,6 +13,11 @@ class AWSAPIConfig(BaseModel):
     aws_secret_access_key: str
 
 
+class HerokuAPIConfig(BaseModel):
+    api_key: str
+    team_name_or_id: str | None = None
+
+
 class APIConfigResponse(BaseModel):
     id: int
     type: str

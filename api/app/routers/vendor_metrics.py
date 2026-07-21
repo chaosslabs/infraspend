@@ -3,10 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from app.models import AWSAPIConfiguration, DatadogAPIConfiguration, User
+from app.models import (
+    AWSAPIConfiguration,
+    DatadogAPIConfiguration,
+    HerokuAPIConfiguration,
+    User,
+)
 from app.helpers.database import get_db
 from app.helpers.auth import get_authenticated_user
-from app.services.vendor_metrics_service import VendorMetricsService
+from app.services.vendor_metrics_service import (
+    VendorConfigurationNotFound,
+    VendorMetricsService,
+)
 from app.helpers.secrets_service import SecretsService
 
 API_KEY_NAME = "X-API-Key"
@@ -19,6 +27,7 @@ router = APIRouter(prefix="/v1/vendors-metrics", tags=["vendors"])
 VENDOR_CONFIG_MODELS = {
     "aws": AWSAPIConfiguration,
     "datadog": DatadogAPIConfiguration,
+    "heroku": HerokuAPIConfiguration,
 }
 
 
@@ -113,6 +122,15 @@ async def get_vendor_metrics(
                 "error": "Invalid vendor",
                 "message": str(e),
                 "code": "INVALID_VENDOR",
+            },
+        )
+    except VendorConfigurationNotFound as e:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": "Configuration not found",
+                "message": str(e),
+                "code": "CONFIG_NOT_FOUND",
             },
         )
     except Exception as e:

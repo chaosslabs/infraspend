@@ -7,7 +7,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
 import BarChart from "components/charts/BarChart";
 import { ApexOptions } from "apexcharts";
-import { DatadogIcon, AWSIcon } from "../../../../components/icons";
+import { DatadogIcon, AWSIcon, HerokuIcon } from "../../../../components/icons";
 import { Link } from "react-router-dom";
 import {
   SourceHealthBadge,
@@ -52,39 +52,56 @@ interface ForecastData {
 }
 
 interface VendorMetricsProps {
-  vendor: "datadog" | "aws";
+  vendor: "datadog" | "aws" | "heroku";
   title: string;
   demo?: boolean;
   identifier?: string;
 }
 
-const generateDemoMetrics = (vendor: "datadog" | "aws"): VendorMetricsData => {
+const getVendorBaseAmount = (vendor: VendorMetricsProps["vendor"]) => {
+  if (vendor === "datadog") return 2000;
+  if (vendor === "heroku") return 900;
+  return 15000;
+};
+
+const getVendorIcon = (vendor: VendorMetricsProps["vendor"]) => {
+  if (vendor === "datadog") return DatadogIcon;
+  if (vendor === "heroku") return HerokuIcon;
+  return AWSIcon;
+};
+
+const getVendorLabel = (vendor: VendorMetricsProps["vendor"]) => {
+  if (vendor === "aws") return "AWS";
+  return vendor.charAt(0).toUpperCase() + vendor.slice(1);
+};
+
+const generateDemoMetrics = (vendor: VendorMetricsProps["vendor"]): VendorMetricsData => {
   const currentDate = new Date();
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = new Date();
     d.setMonth(currentDate.getMonth() - (5 - i));
     return d.toLocaleDateString('en-US', { month: '2-digit', year: 'numeric' }).replace('/', '-');
   });
-  
-  const baseAmount = vendor === "datadog" ? 2000 : 15000;
+
+  const baseAmount = getVendorBaseAmount(vendor);
   const now = Date.now();
 
   // Demo two distinct health states so the freshness surfacing is visible:
-  // Datadog ingests cleanly (fresh); AWS's latest refresh failed (cached).
+  // Datadog/Heroku ingest cleanly (fresh); AWS's latest refresh failed (cached).
   const health: SourceHealthFields =
-    vendor === "datadog"
+    vendor === "aws"
       ? {
-          last_success_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-          last_attempt_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-          last_attempt_status: "success",
-          data_through: months[months.length - 1],
-          record_count: months.length,
-        }
-      : {
           last_success_at: new Date(now - 26 * 60 * 60 * 1000).toISOString(),
           last_attempt_at: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
           last_attempt_status: "failed",
           data_through: months[months.length - 2],
+          record_count: months.length,
+        }
+      : {
+          last_success_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+          last_attempt_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+          last_attempt_status: "success",
+          data_through: months[months.length - 1],
           record_count: months.length,
         };
 
@@ -97,7 +114,7 @@ const generateDemoMetrics = (vendor: "datadog" | "aws"): VendorMetricsData => {
   };
 };
 
-const generateDemoForecast = (vendor: "datadog" | "aws"): ForecastData => {
+const generateDemoForecast = (vendor: VendorMetricsProps["vendor"]): ForecastData => {
   const currentDate = new Date();
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = new Date();
@@ -105,7 +122,7 @@ const generateDemoForecast = (vendor: "datadog" | "aws"): ForecastData => {
     return d.toLocaleDateString('en-US', { month: '2-digit', year: 'numeric' }).replace('/', '-');
   });
   
-  const baseAmount = vendor === "datadog" ? 2000 : 15000;
+  const baseAmount = getVendorBaseAmount(vendor);
   const growthRate = 0.15;
   
   const forecast = months.map((month, index) => {
@@ -158,6 +175,9 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
   const [forecastLoading, setForecastLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"actual" | "forecast">("actual");
   const { getAccessTokenSilently } = useAuth0();
+  const vendorLabel = getVendorLabel(vendor);
+  const VendorIcon = getVendorIcon(vendor);
+  const configurationIdentifier = identifier || "Default Configuration";
 
   const fetchForecastData = async () => {
     try {
@@ -169,7 +189,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       }
 
       const response = await CallBackendService(
-        `/v1/vendors-forecast/${vendor}?identifier=${encodeURIComponent(identifier)}`,
+        `/v1/vendors-forecast/${vendor}?identifier=${encodeURIComponent(configurationIdentifier)}`,
         getAccessTokenSilently,
       );
       setForecastData(response);
@@ -195,7 +215,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       }
 
       const response = await CallBackendService(
-        `/v1/vendors-metrics/${vendor.toLowerCase()}?identifier=${encodeURIComponent(identifier)}`,
+        `/v1/vendors-metrics/${vendor.toLowerCase()}?identifier=${encodeURIComponent(configurationIdentifier)}`,
         getAccessTokenSilently,
       );
       setMetrics(response);
@@ -272,10 +292,10 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
     try {
       const token = await getAccessTokenSilently();
       const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
-      const query = new URLSearchParams({ format: "csv" });
-      if (identifier) {
-        query.set("identifier", identifier);
-      }
+      const query = new URLSearchParams({
+        format: "csv",
+        identifier: configurationIdentifier,
+      });
       const response = await fetch(
         `${backendUrl}/v1/vendors-forecast/${vendor}?${query.toString()}`,
         {
@@ -431,11 +451,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       <div className="relative flex flex-row items-start justify-between">
         <div className="flex items-center">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-navy-700">
-            {vendor === "datadog" ? (
-              <DatadogIcon className="h-6 w-6 text-brand-500 dark:text-white" />
-            ) : (
-              <AWSIcon className="h-6 w-6 text-brand-500 dark:text-white" />
-            )}
+            <VendorIcon className="h-6 w-6 text-brand-500 dark:text-white" />
           </div>
           <h5 className="ml-4 text-lg font-bold text-gray-700 dark:text-white">
             {title}
@@ -456,9 +472,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       <div className="flex flex-col">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-700 dark:text-white">
-            {vendor.toString().charAt(0).toUpperCase() +
-              vendor.toString().slice(1)}{" "}
-            Monthly Costs
+            {vendorLabel} Monthly Costs
           </h2>
           <div className="flex space-x-2">
             <button
@@ -547,7 +561,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
             ) : (
               <div className="flex h-64 items-center justify-center">
                 <p className="text-center text-gray-500">
-                  No API configuration found for {vendor.toString()}
+                  No API configuration found for {vendorLabel}
                 </p>
               </div>
             )}

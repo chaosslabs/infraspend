@@ -1,14 +1,24 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from app.models import VendorMetrics, User, DatadogAPIConfiguration, AWSAPIConfiguration
+from app.models import (
+    VendorMetrics,
+    User,
+    DatadogAPIConfiguration,
+    AWSAPIConfiguration,
+    HerokuAPIConfiguration,
+)
 from app.services.aws_service import AWSService
 from app.services.datadog_service import DatadogService
+from app.services.heroku_service import HerokuService
 from typing import List, Dict
 from datetime import datetime, timedelta
+import inspect
 import logging
 import os
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_VENDORS = {"aws", "datadog", "heroku"}
 
 # Freshness threshold used by the dashboard to decide when a last-successful
 # ingestion is "stale". Documented and configurable rather than hidden in UI
@@ -16,6 +26,10 @@ logger = logging.getLogger(__name__)
 # day, so 48h leaves one full refresh cycle of tolerance. Returned in the
 # metrics payload so the API and dashboard share a single source of truth.
 FRESHNESS_STALE_HOURS = int(os.getenv("METRIC_FRESHNESS_STALE_HOURS", "48"))
+
+
+class VendorConfigurationNotFound(Exception):
+    pass
 
 
 def _iso_utc(dt: datetime | None) -> str | None:
@@ -46,52 +60,36 @@ class VendorMetricsService:
             for user in users:
                 service = cls(user.id, db)
 
-                # Update AWS metrics for each configuration
-                aws_configs = (
-                    db.query(AWSAPIConfiguration)
-                    .filter(AWSAPIConfiguration.user_id == user.id)
-                    .all()
-                )
+                vendors = [
+                    ("aws", "AWS", AWSAPIConfiguration),
+                    ("datadog", "Datadog", DatadogAPIConfiguration),
+                    ("heroku", "Heroku", HerokuAPIConfiguration),
+                ]
 
-                for config in aws_configs:
-                    try:
-                        await service.get_and_store_vendor_metrics(
-                            "aws", config.identifier
-                        )
-                        msg = f"AWS metrics updated for user {user.id}, config {config.identifier}"
-                        results["success"].append(msg)
-                    except Exception as e:
-                        error_msg = (
-                            f"Failed to update AWS metrics for user {user.id}, "
-                            f"config {config.identifier}: {str(e)}"
-                        )
-                        logger.error(error_msg)
-                        results["failed"].append(error_msg)
+                for vendor, label, config_model in vendors:
+                    configs = (
+                        db.query(config_model)
+                        .filter(config_model.user_id == user.id)
+                        .all()
+                    )
 
-                # Update Datadog metrics for each configuration
-                datadog_configs = (
-                    db.query(DatadogAPIConfiguration)
-                    .filter(DatadogAPIConfiguration.user_id == user.id)
-                    .all()
-                )
-
-                for config in datadog_configs:
-                    try:
-                        await service.get_and_store_vendor_metrics(
-                            "datadog", config.identifier
-                        )
-                        msg = (
-                            f"Datadog metrics updated for user {user.id}, "
-                            f"config {config.identifier}"
-                        )
-                        results["success"].append(msg)
-                    except Exception as e:
-                        error_msg = (
-                            f"Failed to update Datadog metrics for user {user.id}, "
-                            f"config {config.identifier}: {str(e)}"
-                        )
-                        logger.error(error_msg)
-                        results["failed"].append(error_msg)
+                    for config in configs:
+                        try:
+                            await service.get_and_store_vendor_metrics(
+                                vendor, config.identifier
+                            )
+                            msg = (
+                                f"{label} metrics updated for user {user.id}, "
+                                f"config {config.identifier}"
+                            )
+                            results["success"].append(msg)
+                        except Exception as e:
+                            error_msg = (
+                                f"Failed to update {label} metrics for user {user.id}, "
+                                f"config {config.identifier}: {str(e)}"
+                            )
+                            logger.error(error_msg)
+                            results["failed"].append(error_msg)
 
         except Exception as e:
             error_msg = f"Batch update failed: {str(e)}"
@@ -105,10 +103,11 @@ class VendorMetricsService:
     ):
         """Get vendor metrics and store them in the database"""
         vendor = vendor.lower()
-        if vendor not in {"aws", "datadog"}:
-            raise ValueError(f"Unsupported vendor: {vendor}")
 
         try:
+            if vendor not in SUPPORTED_VENDORS:
+                raise ValueError(f"Unsupported vendor: {vendor}")
+
             # Get stored metrics
             stored_metrics = (
                 self.db.query(VendorMetrics)
@@ -186,6 +185,8 @@ class VendorMetricsService:
                         start_date=earliest_missing,
                         end_date=latest_missing,
                     )
+                    if inspect.isawaitable(costs):
+                        costs = await costs
 
                     # Store new metrics
                     self._store_metrics(vendor, identifier, costs["data"])
@@ -252,7 +253,7 @@ class VendorMetricsService:
                 "stale_after_hours": FRESHNESS_STALE_HOURS,
             }
 
-        except ValueError:
+        except (ValueError, VendorConfigurationNotFound):
             raise
         except Exception as e:
             raise Exception(f"Failed to get and store {vendor} metrics: {str(e)}")
@@ -265,14 +266,40 @@ class VendorMetricsService:
         end_date: str | None = None,
     ):
         """Get costs from the appropriate vendor service"""
-        if vendor.lower() == "datadog":
+        if vendor == "datadog":
+            self._ensure_configuration_exists(
+                DatadogAPIConfiguration, "Datadog", identifier
+            )
             service = DatadogService(self.user_id, self.db, identifier)
             return service.get_monthly_costs(start_date, end_date)
-        elif vendor.lower() == "aws":
+        elif vendor == "aws":
+            self._ensure_configuration_exists(AWSAPIConfiguration, "AWS", identifier)
             service = AWSService(self.user_id, self.db, identifier)
+            return service.get_monthly_costs(start_date, end_date)
+        elif vendor == "heroku":
+            self._ensure_configuration_exists(
+                HerokuAPIConfiguration, "Heroku", identifier
+            )
+            service = HerokuService(self.user_id, self.db, identifier)
             return service.get_monthly_costs(start_date, end_date)
         else:
             raise ValueError(f"Unsupported vendor: {vendor}")
+
+    def _ensure_configuration_exists(
+        self, config_model, vendor_label: str, identifier: str
+    ):
+        config = (
+            self.db.query(config_model)
+            .filter(config_model.user_id == self.user_id)
+            .filter(config_model.identifier == identifier)
+            .first()
+        )
+
+        if not config:
+            raise VendorConfigurationNotFound(
+                f"{vendor_label} API configuration not found "
+                f"for this user with identifier {identifier}"
+            )
 
     def _store_metrics(self, vendor: str, identifier: str, cost_data: list):
         """Store metrics in the database"""

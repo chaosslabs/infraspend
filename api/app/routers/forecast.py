@@ -6,12 +6,17 @@ import csv
 import json
 from sqlalchemy.orm import Session
 from app.models import User
-from app.models import DatadogAPIConfiguration, AWSAPIConfiguration
+from app.models import (
+    DatadogAPIConfiguration,
+    AWSAPIConfiguration,
+    HerokuAPIConfiguration,
+)
 from app.helpers.database import get_db
 from app.helpers.auth import get_authenticated_user
 from app.services.forecast_service import ForecastService
 from app.services.datadog_service import DatadogService
 from app.services.aws_service import AWSService
+from app.services.heroku_service import HerokuService
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,28 @@ async def get_vendor_forecast(
                 )
 
             service = AWSService(user.id, db, identifier)
+        elif vendor_name == "heroku":
+            heroku_config = (
+                db.query(HerokuAPIConfiguration)
+                .filter(HerokuAPIConfiguration.user_id == user.id)
+                .filter(HerokuAPIConfiguration.identifier == identifier)
+                .first()
+            )
+
+            if not heroku_config:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "error": "Configuration not found",
+                        "message": (
+                            "Heroku API configuration not found "
+                            f"for this user with identifier {identifier}"
+                        ),
+                        "code": "CONFIG_NOT_FOUND",
+                    },
+                )
+
+            service = HerokuService(user.id, db, identifier)
         else:
             return JSONResponse(
                 status_code=400,

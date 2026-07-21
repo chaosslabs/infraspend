@@ -9,6 +9,7 @@ from app.models import (
     AWSAPIConfiguration,
     Base,
     DatadogAPIConfiguration,
+    HerokuAPIConfiguration,
     User,
     VendorMetrics,
 )
@@ -63,11 +64,47 @@ def metrics_by_month(response):
     return {item["month"]: item["cost"] for item in response["data"]}
 
 
+def add_aws_config(db_session, user, identifier="test-config"):
+    config = AWSAPIConfiguration(
+        user_id=user.id,
+        identifier=identifier,
+        aws_access_key_id="aws-key",
+        aws_secret_access_key="aws-secret",
+    )
+    db_session.add(config)
+    db_session.commit()
+    return config
+
+
+def add_datadog_config(db_session, user, identifier="test-config"):
+    config = DatadogAPIConfiguration(
+        user_id=user.id,
+        identifier=identifier,
+        api_key="datadog-key",
+        app_key="datadog-app-key",
+    )
+    db_session.add(config)
+    db_session.commit()
+    return config
+
+
+def add_heroku_config(db_session, user, identifier="test-config"):
+    config = HerokuAPIConfiguration(
+        user_id=user.id,
+        identifier=identifier,
+        api_key="heroku-key",
+    )
+    db_session.add(config)
+    db_session.commit()
+    return config
+
+
 class TestVendorMetricsService:
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_aws_success(
         self, db_session, user, mock_costs_response
     ):
+        add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
 
         with patch(
@@ -88,6 +125,7 @@ class TestVendorMetricsService:
     async def test_get_and_store_vendor_metrics_datadog_success(
         self, db_session, user, mock_costs_response
     ):
+        add_datadog_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
 
         with patch(
@@ -107,9 +145,31 @@ class TestVendorMetricsService:
         mock_dd_instance.get_monthly_costs.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_get_and_store_vendor_metrics_heroku_success(
+        self, db_session, user, mock_costs_response
+    ):
+        add_heroku_config(db_session, user)
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.HerokuService",
+            autospec=True,
+        ) as mock_heroku_service:
+            mock_heroku_instance = Mock()
+            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_service.return_value = mock_heroku_instance
+
+            result = await service.get_and_store_vendor_metrics("heroku", "test-config")
+
+        assert metrics_by_month(result) == metrics_by_month(mock_costs_response)
+        assert db_session.query(VendorMetrics).count() == 2
+        mock_heroku_instance.get_monthly_costs.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_update_existing(
         self, db_session, user, mock_costs_response
     ):
+        add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
         existing_month = mock_costs_response["data"][0]["month"]
         existing_metric = VendorMetrics(
@@ -141,6 +201,7 @@ class TestVendorMetricsService:
     async def test_response_includes_freshness_fields_on_success(
         self, db_session, user, mock_costs_response
     ):
+        add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
         current_month = datetime.now().replace(day=1).strftime("%m-%Y")
 
@@ -163,6 +224,7 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_failed_refresh_serves_cached_data(self, db_session, user):
+        add_aws_config(db_session, user)
         previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
             "%m-%Y"
         )
@@ -197,6 +259,7 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_failed_refresh_without_cache_raises(self, db_session, user):
+        add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
 
         with patch(
@@ -213,6 +276,7 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_partial_refresh_when_current_month_missing(self, db_session, user):
+        add_aws_config(db_session, user)
         previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
             "%m-%Y"
         )
@@ -246,6 +310,7 @@ class TestVendorMetricsService:
 
     @pytest.mark.asyncio
     async def test_empty_source_reports_no_records(self, db_session, user):
+        add_aws_config(db_session, user)
         service = VendorMetricsService(user.id, db_session)
 
         with patch(
@@ -275,13 +340,9 @@ class TestVendorMetricsService:
     async def test_batch_update_all_vendor_metrics_success(
         self, db_session, user, mock_costs_response
     ):
-        db_session.add_all(
-            [
-                AWSAPIConfiguration(user_id=user.id, identifier="test-aws"),
-                DatadogAPIConfiguration(user_id=user.id, identifier="test-datadog"),
-            ]
-        )
-        db_session.commit()
+        add_aws_config(db_session, user, "test-aws")
+        add_datadog_config(db_session, user, "test-datadog")
+        add_heroku_config(db_session, user, "test-heroku")
 
         with patch(
             "app.services.vendor_metrics_service.AWSService",
@@ -289,7 +350,10 @@ class TestVendorMetricsService:
         ) as mock_aws_service, patch(
             "app.services.vendor_metrics_service.DatadogService",
             autospec=True,
-        ) as mock_dd_service:
+        ) as mock_dd_service, patch(
+            "app.services.vendor_metrics_service.HerokuService",
+            autospec=True,
+        ) as mock_heroku_service:
             mock_aws_instance = Mock()
             mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
             mock_aws_service.return_value = mock_aws_instance
@@ -298,26 +362,27 @@ class TestVendorMetricsService:
             mock_dd_instance.get_monthly_costs.return_value = mock_costs_response
             mock_dd_service.return_value = mock_dd_instance
 
+            mock_heroku_instance = Mock()
+            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_service.return_value = mock_heroku_instance
+
             results = await VendorMetricsService.batch_update_all_vendor_metrics(
                 db_session
             )
 
-        assert len(results["success"]) == 2
+        assert len(results["success"]) == 3
         assert len(results["failed"]) == 0
         assert any("AWS metrics updated" in msg for msg in results["success"])
         assert any("Datadog metrics updated" in msg for msg in results["success"])
+        assert any("Heroku metrics updated" in msg for msg in results["success"])
 
     @pytest.mark.asyncio
     async def test_batch_update_all_vendor_metrics_partial_failure(
         self, db_session, user, mock_costs_response
     ):
-        db_session.add_all(
-            [
-                AWSAPIConfiguration(user_id=user.id, identifier="test-aws"),
-                DatadogAPIConfiguration(user_id=user.id, identifier="test-datadog"),
-            ]
-        )
-        db_session.commit()
+        add_aws_config(db_session, user, "test-aws")
+        add_datadog_config(db_session, user, "test-datadog")
+        add_heroku_config(db_session, user, "test-heroku")
 
         with patch(
             "app.services.vendor_metrics_service.AWSService",
@@ -325,7 +390,10 @@ class TestVendorMetricsService:
         ) as mock_aws_service, patch(
             "app.services.vendor_metrics_service.DatadogService",
             autospec=True,
-        ) as mock_dd_service:
+        ) as mock_dd_service, patch(
+            "app.services.vendor_metrics_service.HerokuService",
+            autospec=True,
+        ) as mock_heroku_service:
             mock_aws_instance = Mock()
             mock_aws_instance.get_monthly_costs.return_value = mock_costs_response
             mock_aws_service.return_value = mock_aws_instance
@@ -336,13 +404,18 @@ class TestVendorMetricsService:
             )
             mock_dd_service.return_value = mock_dd_instance
 
+            mock_heroku_instance = Mock()
+            mock_heroku_instance.get_monthly_costs.return_value = mock_costs_response
+            mock_heroku_service.return_value = mock_heroku_instance
+
             results = await VendorMetricsService.batch_update_all_vendor_metrics(
                 db_session
             )
 
-        assert len(results["success"]) == 1
+        assert len(results["success"]) == 2
         assert len(results["failed"]) == 1
         assert any("AWS metrics updated" in msg for msg in results["success"])
+        assert any("Heroku metrics updated" in msg for msg in results["success"])
         assert any(
             "Failed to update Datadog metrics" in msg for msg in results["failed"]
         )

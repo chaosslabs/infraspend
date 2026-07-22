@@ -2,14 +2,10 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import routes from "routes";
 import { useAuth0 } from "@auth0/auth0-react";
-import { MdLogout, MdMenu } from "react-icons/md";
+import { MdLogout } from "react-icons/md";
 import InfraSpendLogo from "components/logo/InfraSpendLogo";
 
-interface NavbarProps {
-  onOpenSidenav: () => void;
-}
-
-const Navbar: React.FC<NavbarProps> = ({ onOpenSidenav }) => {
+const Navbar: React.FC = () => {
   const { logout } = useAuth0();
   const location = useLocation();
 
@@ -34,16 +30,8 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenSidenav }) => {
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onOpenSidenav}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-200 text-navy-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-white dark:hover:bg-white/10 xl:hidden"
-              aria-label="Open navigation"
-            >
-              <MdMenu className="h-5 w-5" aria-hidden="true" />
-            </button>
             <InfraSpendLogo
-              className="h-8 w-auto text-navy-700 dark:text-white xl:hidden"
+              className="h-8 w-auto text-navy-700 dark:text-white"
               showWordmark={false}
             />
             <div>

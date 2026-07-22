@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.models import (
@@ -81,6 +82,10 @@ def metrics_by_month(response):
     return {item["month"]: item["cost"] for item in response["data"]}
 
 
+def lineage_by_month(response):
+    return {item["month"]: item for item in response["data"]}
+
+
 def add_aws_config(db_session, user, identifier="test-config"):
     config = AWSAPIConfiguration(
         user_id=user.id,
@@ -137,6 +142,34 @@ class TestVendorMetricsService:
 
         assert metrics_by_month(result) == metrics_by_month(mock_costs_response)
         assert db_session.query(VendorMetrics).count() == 2
+        stored_metric = (
+            db_session.query(VendorMetrics)
+            .filter(VendorMetrics.month == mock_costs_response["data"][0]["month"])
+            .first()
+        )
+        assert stored_metric.source_provider == "aws"
+        assert (
+            stored_metric.source_period_start.isoformat()
+            == mock_costs_response["data"][0]["period_start"]
+        )
+        assert (
+            stored_metric.source_period_end.isoformat()
+            == mock_costs_response["data"][0]["period_end"]
+        )
+        assert stored_metric.provider_currency == "USD"
+        result_metric = lineage_by_month(result)[
+            mock_costs_response["data"][0]["month"]
+        ]
+        assert result_metric["source_provider"] == "aws"
+        assert (
+            result_metric["source_period_start"]
+            == mock_costs_response["data"][0]["period_start"]
+        )
+        assert (
+            result_metric["source_period_end"]
+            == mock_costs_response["data"][0]["period_end"]
+        )
+        assert result_metric["provider_currency"] == "USD"
         mock_aws_instance.get_monthly_costs.assert_called_once()
 
     @pytest.mark.asyncio
@@ -215,8 +248,81 @@ class TestVendorMetricsService:
 
         db_session.refresh(existing_metric)
         assert existing_metric.cost == mock_costs_response["data"][0]["cost"]
+        assert existing_metric.source_provider == "aws"
+        assert (
+            existing_metric.source_period_start.isoformat()
+            == mock_costs_response["data"][0]["period_start"]
+        )
+        assert (
+            existing_metric.source_period_end.isoformat()
+            == mock_costs_response["data"][0]["period_end"]
+        )
+        assert existing_metric.provider_currency == "USD"
         assert metrics_by_month(result) == metrics_by_month(mock_costs_response)
         assert db_session.query(VendorMetrics).count() == 2
+
+    @pytest.mark.asyncio
+    async def test_historical_metrics_with_unknown_lineage_are_explicit(
+        self, db_session, user
+    ):
+        add_aws_config(db_session, user)
+        previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
+            "%m-%Y"
+        )
+        db_session.add(
+            VendorMetrics(
+                user_id=user.id,
+                vendor="aws",
+                identifier="test-config",
+                month=previous_month,
+                cost=42.0,
+            )
+        )
+        db_session.commit()
+
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.return_value = {"data": []}
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        historical_metric = lineage_by_month(result)[previous_month]
+        assert historical_metric["source_provider"] == "unknown"
+        assert historical_metric["source_period_start"] is None
+        assert historical_metric["source_period_end"] is None
+        assert historical_metric["provider_currency"] is None
+
+    def test_uniqueness_by_user_vendor_identifier_and_month_remains_enforced(
+        self, db_session, user
+    ):
+        first_metric = VendorMetrics(
+            user_id=user.id,
+            vendor="aws",
+            identifier="test-config",
+            month="01-2026",
+            cost=10.0,
+            source_provider="aws",
+        )
+        duplicate_metric = VendorMetrics(
+            user_id=user.id,
+            vendor="aws",
+            identifier="test-config",
+            month="01-2026",
+            cost=20.0,
+            source_provider="aws",
+        )
+        db_session.add(first_metric)
+        db_session.commit()
+
+        db_session.add(duplicate_metric)
+        with pytest.raises(IntegrityError):
+            db_session.commit()
 
     @pytest.mark.asyncio
     async def test_response_includes_freshness_fields_on_success(

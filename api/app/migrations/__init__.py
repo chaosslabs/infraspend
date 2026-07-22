@@ -9,6 +9,7 @@ from .create_vendor_metrics_table import upgrade as create_vendor_metrics_table
 from .add_updated_at_to_vendor_metrics import (
     upgrade as add_updated_at_to_vendor_metrics,
 )
+from .add_lineage_to_vendor_metrics import upgrade as add_lineage_to_vendor_metrics
 
 # List of migrations in order of execution
 MIGRATIONS = [
@@ -19,4 +20,5 @@ MIGRATIONS = [
     add_config_name,
     create_vendor_metrics_table,  # Add vendor metrics table
     add_updated_at_to_vendor_metrics,  # Add the new migration
+    add_lineage_to_vendor_metrics,
 ]

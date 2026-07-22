@@ -10,7 +10,7 @@ from app.models import (
 from app.services.aws_service import AWSService
 from app.services.datadog_service import DatadogService
 from app.services.heroku_service import HerokuService
-from app.services.monthly_costs import validate_monthly_cost_record
+from app.services.monthly_costs import parse_iso_date, validate_monthly_cost_record
 from typing import List, Dict
 from datetime import datetime, timedelta
 import inspect
@@ -42,6 +42,23 @@ def _iso_utc(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     return dt.replace(microsecond=0).isoformat() + "Z"
+
+
+def _date_iso(date_value) -> str | None:
+    if date_value is None:
+        return None
+    return date_value.isoformat()
+
+
+def _serialize_metric(metric: VendorMetrics):
+    return {
+        "month": metric.month,
+        "cost": float(metric.cost),
+        "source_provider": metric.source_provider or "unknown",
+        "source_period_start": _date_iso(metric.source_period_start),
+        "source_period_end": _date_iso(metric.source_period_end),
+        "provider_currency": metric.provider_currency,
+    }
 
 
 class VendorMetricsService:
@@ -229,7 +246,7 @@ class VendorMetricsService:
             )
 
             data = [
-                {"month": metric.month, "cost": float(metric.cost)}
+                _serialize_metric(metric)
                 for metric in all_metrics
                 if datetime.strptime(metric.month, "%m-%Y").year
                 > datetime.now().year - 2
@@ -308,6 +325,10 @@ class VendorMetricsService:
             cost_record = validate_monthly_cost_record(
                 cost_item, expected_provider=vendor.lower()
             )
+            source_period_start = parse_iso_date(
+                cost_record["period_start"], "period_start"
+            )
+            source_period_end = parse_iso_date(cost_record["period_end"], "period_end")
             # Check if metric already exists
             existing_metric = (
                 self.db.query(VendorMetrics)
@@ -325,6 +346,10 @@ class VendorMetricsService:
             if existing_metric:
                 # Update existing metric
                 existing_metric.cost = cost_record["cost"]
+                existing_metric.source_provider = cost_record["provider"]
+                existing_metric.source_period_start = source_period_start
+                existing_metric.source_period_end = source_period_end
+                existing_metric.provider_currency = cost_record["currency"]
             else:
                 # Create new metric
                 metric = VendorMetrics(
@@ -333,6 +358,10 @@ class VendorMetricsService:
                     identifier=identifier,
                     month=cost_record["month"],
                     cost=cost_record["cost"],
+                    source_provider=cost_record["provider"],
+                    source_period_start=source_period_start,
+                    source_period_end=source_period_end,
+                    provider_currency=cost_record["currency"],
                 )
                 self.db.add(metric)
 

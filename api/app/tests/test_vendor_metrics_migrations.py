@@ -64,7 +64,7 @@ def test_add_lineage_migration_is_additive_nullable_and_registered(monkeypatch):
     migration.upgrade()
 
     sql = captured_sql(fake_engine)
-    assert MIGRATIONS[-1] is migration.upgrade
+    assert migration.upgrade in MIGRATIONS
     assert "ADD COLUMN IF NOT EXISTS source_provider VARCHAR" in sql
     assert "ADD COLUMN IF NOT EXISTS source_period_start DATE" in sql
     assert "ADD COLUMN IF NOT EXISTS source_period_end DATE" in sql
@@ -100,3 +100,47 @@ def test_add_lineage_migration_logs_and_reraises_downgrade_errors(monkeypatch):
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         migration.downgrade()
+
+
+def test_create_vendor_metric_ingestion_runs_table_registered(monkeypatch):
+    migration = import_module(
+        "app.migrations.create_vendor_metric_ingestion_runs_table"
+    )
+    fake_engine = FakeEngine()
+    monkeypatch.setattr(migration, "engine", fake_engine)
+
+    migration.upgrade()
+
+    sql = captured_sql(fake_engine)
+    assert MIGRATIONS[-1] is migration.upgrade
+    assert "CREATE TABLE IF NOT EXISTS vendor_metric_ingestion_runs" in sql
+    assert "user_id INTEGER NOT NULL REFERENCES users(id)" in sql
+    assert "vendor VARCHAR NOT NULL" in sql
+    assert "identifier VARCHAR NOT NULL" in sql
+    assert "requested_period_start DATE NULL" in sql
+    assert "requested_period_end DATE NULL" in sql
+    assert "source_period_start DATE NULL" in sql
+    assert "source_period_end DATE NULL" in sql
+    assert "status VARCHAR NOT NULL DEFAULT 'running'" in sql
+    assert "records_received INTEGER NOT NULL DEFAULT 0" in sql
+    assert "records_stored INTEGER NOT NULL DEFAULT 0" in sql
+    assert "error_category VARCHAR NULL" in sql
+    assert "'success', 'partial', 'failed'" in sql
+    assert "'provider_error'" in sql
+    assert "'row_validation'" in sql
+    assert "'incomplete_source'" in sql
+    assert "idx_vendor_metric_ingestion_runs_scope_started" in sql
+
+
+def test_create_vendor_metric_ingestion_runs_downgrade(monkeypatch):
+    migration = import_module(
+        "app.migrations.create_vendor_metric_ingestion_runs_table"
+    )
+    fake_engine = FakeEngine()
+    monkeypatch.setattr(migration, "engine", fake_engine)
+
+    migration.downgrade()
+
+    assert "DROP TABLE IF EXISTS vendor_metric_ingestion_runs" in captured_sql(
+        fake_engine
+    )

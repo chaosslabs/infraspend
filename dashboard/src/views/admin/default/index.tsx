@@ -55,10 +55,10 @@ const Dashboard = () => {
 
   if (visibleConfigurations.length === 0) {
     return (
-      <div className="mx-auto mt-3 max-w-[1180px]">
+      <div className="mx-auto mt-3 max-w-[1080px]">
         <Card extra="overflow-hidden !p-0">
-          <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
-            <section className="p-8">
+          <div className="grid gap-8 p-6 md:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+            <section className="max-w-[720px]">
               <p className="text-sm font-semibold uppercase text-brand-600 dark:text-teal-200">
                 InfraSpend setup
               </p>
@@ -79,21 +79,21 @@ const Dashboard = () => {
                 Link an account
               </Link>
             </section>
-            <aside className="border-t border-gray-200 bg-gray-50 p-8 dark:border-white/10 dark:bg-white/5 lg:border-l lg:border-t-0">
+            <aside className="max-w-xl border-t border-gray-200/80 pt-6 dark:border-white/10 lg:max-w-none lg:border-l-2 lg:border-t-0 lg:border-brand-200/60 lg:py-1 lg:pl-6 dark:lg:border-teal-300/40">
               <h2 className="text-sm font-bold uppercase text-gray-500 dark:text-gray-400">
                 Setup checklist
               </h2>
-              <div className="mt-5 space-y-5">
+              <div className="mt-4 space-y-3">
                 {[
                   "Read-only provider credentials",
                   "Current source freshness",
                   "Budget plan from forecast data",
                 ].map((item, index) => (
-                  <div key={item} className="flex gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-sm font-bold text-brand-700 ring-1 ring-gray-200 dark:bg-navy-900 dark:text-teal-200 dark:ring-white/10">
+                  <div key={item} className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-50 text-sm font-bold text-brand-700 ring-1 ring-brand-100 dark:bg-navy-900 dark:text-teal-200 dark:ring-white/10">
                       {index + 1}
                     </span>
-                    <p className="text-sm font-medium text-navy-700 dark:text-white">
+                    <p className="text-sm font-medium leading-6 text-navy-700 dark:text-white">
                       {item}
                     </p>
                   </div>

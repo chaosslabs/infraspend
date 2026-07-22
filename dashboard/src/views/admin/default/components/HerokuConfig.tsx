@@ -1,24 +1,31 @@
-import Card from "components/card";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
 
 interface HerokuConfigProps {
   onConfigured?: () => void;
   existingConfig?: boolean;
+  initialIdentifier?: string;
+  lockIdentifier?: boolean;
 }
 
 const HerokuConfig: React.FC<HerokuConfigProps> = ({
   onConfigured,
   existingConfig,
+  initialIdentifier = "Default Configuration",
+  lockIdentifier,
 }) => {
   const [apiKey, setApiKey] = useState("");
   const [teamNameOrId, setTeamNameOrId] = useState("");
-  const [identifier, setIdentifier] = useState("Default Configuration");
+  const [identifier, setIdentifier] = useState(initialIdentifier);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const { getAccessTokenSilently } = useAuth0();
+
+  useEffect(() => {
+    setIdentifier(initialIdentifier);
+  }, [initialIdentifier]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,12 +67,12 @@ const HerokuConfig: React.FC<HerokuConfigProps> = ({
   };
 
   return (
-    <Card extra="!p-[20px] text-center">
+    <div>
       <div className="relative flex flex-row justify-between">
         <div className="flex items-center">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-100 dark:bg-white/5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-brand-50 text-brand-600 ring-1 ring-brand-100 dark:bg-brand-500/10 dark:text-teal-200 dark:ring-brand-400/20">
             <svg
-              className="h-6 w-6 text-brand-500 dark:text-white"
+              className="h-6 w-6"
               fill="currentColor"
               viewBox="0 0 24 24"
             >
@@ -81,41 +88,56 @@ const HerokuConfig: React.FC<HerokuConfigProps> = ({
       <div className="mt-8 w-full">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex flex-col">
-            <label className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+            <label
+              htmlFor="heroku-api-key"
+              className="mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            >
               Heroku API Key
             </label>
             <input
+              id="heroku-api-key"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-xl border bg-white/0 p-3 text-sm outline-none border-gray-200 dark:!border-white/10 dark:text-white"
+              className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white"
               placeholder="Enter Heroku API key"
               required
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+            <label
+              htmlFor="heroku-team-name-or-id"
+              className="mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            >
               Team Name or ID
             </label>
             <input
+              id="heroku-team-name-or-id"
               type="text"
               value={teamNameOrId}
               onChange={(e) => setTeamNameOrId(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-xl border bg-white/0 p-3 text-sm outline-none border-gray-200 dark:!border-white/10 dark:text-white"
+              className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white"
               placeholder="Leave blank for personal account invoices"
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+            <label
+              htmlFor="heroku-configuration-name"
+              className="mb-2 text-sm font-medium text-gray-900 dark:text-white"
+            >
               Configuration Name
             </label>
             <input
+              id="heroku-configuration-name"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-xl border bg-white/0 p-3 text-sm outline-none border-gray-200 dark:!border-white/10 dark:text-white"
+              readOnly={lockIdentifier}
+              className={`mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white ${
+                lockIdentifier ? "cursor-not-allowed bg-gray-100/50 dark:bg-white/5" : ""
+              }`}
               placeholder="Enter configuration name"
               required
             />
@@ -136,7 +158,7 @@ const HerokuConfig: React.FC<HerokuConfigProps> = ({
           <button
             type="submit"
             disabled={loading}
-            className={`linear mt-4 w-full rounded-xl bg-brand-500 px-4 py-3 text-base font-medium text-white transition duration-200 hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-400 dark:text-white dark:hover:bg-brand-300 dark:active:bg-brand-200 ${
+            className={`linear mt-4 w-full rounded-md bg-brand-500 px-4 py-3 text-base font-medium text-white transition duration-200 hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-400 dark:text-white dark:hover:bg-brand-300 dark:active:bg-brand-200 ${
               loading ? "cursor-not-allowed opacity-50" : ""
             }`}
           >
@@ -148,7 +170,7 @@ const HerokuConfig: React.FC<HerokuConfigProps> = ({
           </button>
         </form>
       </div>
-    </Card>
+    </div>
   );
 };
 

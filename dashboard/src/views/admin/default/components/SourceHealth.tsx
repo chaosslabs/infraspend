@@ -109,7 +109,7 @@ export function deriveSourceHealth(
   if (f.last_attempt_status === "failed") {
     return {
       state: "failed",
-      label: "Cached — last refresh failed",
+      label: "Cached - refresh failed",
       detail: `last success ${lastSuccess}`,
     };
   }

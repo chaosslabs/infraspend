@@ -10,6 +10,16 @@ import { ApexOptions } from "apexcharts";
 import { DatadogIcon, AWSIcon, HerokuIcon } from "../../../../components/icons";
 import { Link } from "react-router-dom";
 import {
+  MdDownload,
+  MdInsights,
+  MdOpenInNew,
+  MdRefresh,
+  MdShowChart,
+  MdTableChart,
+  MdTrendingDown,
+  MdTrendingUp,
+} from "react-icons/md";
+import {
   SourceHealthBadge,
   deriveSourceHealth,
   SourceHealthFields,
@@ -58,10 +68,85 @@ interface VendorMetricsProps {
   identifier?: string;
 }
 
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+const exactCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const VENDOR_DEMO_MULTIPLIERS: Record<
+  VendorMetricsProps["vendor"],
+  number[]
+> = {
+  aws: [0.86, 0.9, 0.96, 1.02, 1.08, 1.14],
+  datadog: [0.91, 0.95, 0.93, 0.99, 1.01, 1.05],
+  heroku: [0.78, 0.83, 0.9, 0.96, 1.01, 1.08],
+};
+
+const VENDOR_GROWTH_RATES: Record<
+  VendorMetricsProps["vendor"],
+  ForecastData["growth_rates"]
+> = {
+  aws: { best_case: 8, trend_based: 13, worst_case: 22 },
+  datadog: { best_case: 3, trend_based: 7, worst_case: 12 },
+  heroku: { best_case: 5, trend_based: 9, worst_case: 15 },
+};
+
+const VENDOR_THEME: Record<
+  VendorMetricsProps["vendor"],
+  {
+    accentClass: string;
+    iconClass: string;
+    iconWrapClass: string;
+    chartColor: string;
+  }
+> = {
+  aws: {
+    accentClass: "text-amber-600 dark:text-amber-300",
+    iconClass: "text-amber-600 dark:text-amber-300",
+    iconWrapClass: "bg-amber-50 ring-amber-100 dark:bg-amber-500/10 dark:ring-amber-400/20",
+    chartColor: "#d97706",
+  },
+  datadog: {
+    accentClass: "text-brand-600 dark:text-teal-200",
+    iconClass: "text-brand-600 dark:text-teal-200",
+    iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
+    chartColor: "#0B63B6",
+  },
+  heroku: {
+    accentClass: "text-teal-600 dark:text-teal-200",
+    iconClass: "text-teal-600 dark:text-teal-200",
+    iconWrapClass: "bg-teal-50 ring-teal-100 dark:bg-teal-500/10 dark:ring-teal-400/20",
+    chartColor: "#14b8a6",
+  },
+};
+
+const formatMoney = (value: number) => currencyFormatter.format(value);
+const formatExactMoney = (value: number) => exactCurrencyFormatter.format(value);
+
+const formatMonth = (month: string) => {
+  const [maybeMonth, maybeYear] = month.split("-").map(Number);
+  if (!maybeMonth || !maybeYear) return month;
+  return new Date(maybeYear, maybeMonth - 1).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const formatPercent = (value: number) =>
+  `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+
 const getVendorBaseAmount = (vendor: VendorMetricsProps["vendor"]) => {
-  if (vendor === "datadog") return 2000;
-  if (vendor === "heroku") return 900;
-  return 15000;
+  if (vendor === "datadog") return 2200;
+  if (vendor === "heroku") return 980;
+  return 15600;
 };
 
 const getVendorIcon = (vendor: VendorMetricsProps["vendor"]) => {
@@ -75,19 +160,40 @@ const getVendorLabel = (vendor: VendorMetricsProps["vendor"]) => {
   return vendor.charAt(0).toUpperCase() + vendor.slice(1);
 };
 
-const generateDemoMetrics = (vendor: VendorMetricsProps["vendor"]): VendorMetricsData => {
+const getRecentMonths = (count: number) => {
   const currentDate = new Date();
-  const months = Array.from({ length: 6 }, (_, i) => {
+  return Array.from({ length: count }, (_, i) => {
     const d = new Date();
-    d.setMonth(currentDate.getMonth() - (5 - i));
-    return d.toLocaleDateString('en-US', { month: '2-digit', year: 'numeric' }).replace('/', '-');
+    d.setMonth(currentDate.getMonth() - (count - 1 - i));
+    return d
+      .toLocaleDateString("en-US", { month: "2-digit", year: "numeric" })
+      .replace("/", "-");
   });
+};
 
+const getFutureMonths = (count: number) => {
+  const currentDate = new Date();
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date();
+    d.setMonth(currentDate.getMonth() + i + 1);
+    return d
+      .toLocaleDateString("en-US", { month: "2-digit", year: "numeric" })
+      .replace("/", "-");
+  });
+};
+
+const generateDemoMetrics = (
+  vendor: VendorMetricsProps["vendor"],
+): VendorMetricsData => {
+  const months = getRecentMonths(6);
   const baseAmount = getVendorBaseAmount(vendor);
   const now = Date.now();
+  const data = months.map((month, index) => ({
+    month,
+    cost: Math.round(baseAmount * VENDOR_DEMO_MULTIPLIERS[vendor][index]),
+  }));
 
-  // Demo two distinct health states so the freshness surfacing is visible:
-  // Datadog/Heroku ingest cleanly (fresh); AWS's latest refresh failed (cached).
+  // Demo two distinct health states so the freshness surfacing is visible.
   const health: SourceHealthFields =
     vendor === "aws"
       ? {
@@ -95,43 +201,38 @@ const generateDemoMetrics = (vendor: VendorMetricsProps["vendor"]): VendorMetric
           last_attempt_at: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
           last_attempt_status: "failed",
           data_through: months[months.length - 2],
-          record_count: months.length,
+          record_count: data.length,
         }
       : {
           last_success_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
           last_attempt_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
           last_attempt_status: "success",
           data_through: months[months.length - 1],
-          record_count: months.length,
+          record_count: data.length,
         };
 
   return {
     ...health,
-    data: months.map((month, index) => ({
-      month,
-      cost: baseAmount + Math.random() * baseAmount * 0.3 + (index * baseAmount * 0.1)
-    }))
+    data,
   };
 };
 
-const generateDemoForecast = (vendor: VendorMetricsProps["vendor"]): ForecastData => {
-  const currentDate = new Date();
-  const months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date();
-    d.setMonth(currentDate.getMonth() + i + 1);
-    return d.toLocaleDateString('en-US', { month: '2-digit', year: 'numeric' }).replace('/', '-');
-  });
-  
-  const baseAmount = getVendorBaseAmount(vendor);
-  const growthRate = 0.15;
-  
+const generateDemoForecast = (
+  vendor: VendorMetricsProps["vendor"],
+): ForecastData => {
+  const months = getFutureMonths(6);
+  const rates = VENDOR_GROWTH_RATES[vendor];
+  const baseAmount = getVendorBaseAmount(vendor) * 1.1;
+
   const forecast = months.map((month, index) => {
-    const baseCost = baseAmount * (1 + growthRate) ** index;
+    const trendCost = baseAmount * (1 + rates.trend_based / 100) ** index;
     return {
       month,
-      cost: baseCost,
-      best_case: baseCost * 0.8,
-      worst_case: baseCost * 1.3
+      cost: Math.round(trendCost),
+      best_case: Math.round(baseAmount * (1 + rates.best_case / 100) ** index),
+      worst_case: Math.round(
+        baseAmount * (1 + rates.worst_case / 100) ** index,
+      ),
     };
   });
 
@@ -140,34 +241,236 @@ const generateDemoForecast = (vendor: VendorMetricsProps["vendor"]): ForecastDat
     sums: {
       total_best_case: forecast.reduce((sum, item) => sum + item.best_case, 0),
       total_forecast: forecast.reduce((sum, item) => sum + item.cost, 0),
-      total_worst_case: forecast.reduce((sum, item) => sum + item.worst_case, 0)
+      total_worst_case: forecast.reduce((sum, item) => sum + item.worst_case, 0),
     },
-    growth_rates: {
-      best_case: 12,
-      trend_based: 15,
-      worst_case: 30
-    }
+    growth_rates: rates,
   };
 };
 
-const TrendIndicator: React.FC<{ data: MonthlyMetric[] }> = ({ data }) => {
-  const last3Months = data.slice(-3);
-  const trend = last3Months[2].cost - last3Months[0].cost;
-  const percentage = (trend / last3Months[0].cost) * 100;
+const getMonthlyChange = (data: MonthlyMetric[]) => {
+  if (data.length < 2) return 0;
+  const currentMonth = data[data.length - 1];
+  const previousMonth = data[data.length - 2];
+  if (!previousMonth.cost) return 0;
+  return ((currentMonth.cost - previousMonth.cost) / previousMonth.cost) * 100;
+};
+
+const getAverageCost = (data: MonthlyMetric[]) =>
+  data.reduce((sum, item) => sum + item.cost, 0) / Math.max(data.length, 1);
+
+const MetricStat = ({
+  label,
+  value,
+  caption,
+  valueClassName = "text-navy-700 dark:text-white",
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  valueClassName?: string;
+}) => (
+  <div className="min-w-0 px-4 py-3">
+    <dt className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+      {label}
+    </dt>
+    <dd className={`mt-1 truncate text-xl font-bold ${valueClassName}`}>
+      {value}
+    </dd>
+    <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-400">
+      {caption}
+    </p>
+  </div>
+);
+
+const SummaryMetrics: React.FC<{
+  data: MonthlyMetric[];
+  metrics: VendorMetricsData;
+}> = ({ data, metrics }) => {
+  const currentMonth = data[data.length - 1];
+  const monthlyChange = getMonthlyChange(data);
+  const average = getAverageCost(data);
+  const trendClass =
+    monthlyChange > 0
+      ? "text-red-500"
+      : monthlyChange < 0
+      ? "text-green-500"
+      : "text-gray-700 dark:text-gray-200";
 
   return (
-    <div className="flex items-center space-x-2">
-      <span className={`text-sm ${trend >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-        {trend >= 0 ? '↗' : '↘'} {Math.abs(percentage).toFixed(1)}%
+    <dl className="grid overflow-hidden rounded-md border border-gray-200 bg-gray-50/60 divide-y divide-gray-200 dark:border-white/10 dark:bg-white/5 dark:divide-white/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+      <MetricStat
+        label="Current period"
+        value={formatMoney(currentMonth.cost)}
+        caption={formatMonth(currentMonth.month)}
+      />
+      <MetricStat
+        label="Month change"
+        value={formatPercent(monthlyChange)}
+        caption="latest vs prior month"
+        valueClassName={trendClass}
+      />
+      <MetricStat
+        label="Trailing average"
+        value={formatMoney(average)}
+        caption={`${data.length} observed months`}
+      />
+      <MetricStat
+        label="Source records"
+        value={`${metrics.record_count ?? data.length}`}
+        caption={
+          metrics.data_through
+            ? `complete through ${formatMonth(metrics.data_through)}`
+            : "reported by source"
+        }
+      />
+    </dl>
+  );
+};
+
+const TrendIndicator: React.FC<{ data: MonthlyMetric[] }> = ({ data }) => {
+  const monthlyChange = getMonthlyChange(data);
+  const isIncrease = monthlyChange >= 0;
+  const Icon = isIncrease ? MdTrendingUp : MdTrendingDown;
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span
+        className={`inline-flex items-center gap-1 font-semibold ${
+          isIncrease ? "text-red-500" : "text-green-500"
+        }`}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {formatPercent(monthlyChange)}
       </span>
-      <span className="text-sm text-gray-500">
-        Last 3 months trend
+      <span className="text-gray-600 dark:text-gray-400">
+        latest monthly movement
       </span>
     </div>
   );
 };
 
-const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = false, identifier }) => {
+const VarianceCue: React.FC<{
+  data: MonthlyMetric[];
+  vendorLabel: string;
+}> = ({ data, vendorLabel }) => {
+  const currentMonth = data[data.length - 1];
+  const average = getAverageCost(data.slice(0, -1));
+  const variance = average
+    ? ((currentMonth.cost - average) / average) * 100
+    : getMonthlyChange(data);
+  const needsReview = variance > 8;
+
+  return (
+    <div className="mt-5 rounded-md border border-brand-100 bg-brand-50/70 p-4 dark:border-brand-400/20 dark:bg-brand-500/10">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-brand-600 ring-1 ring-brand-100 dark:bg-navy-900 dark:text-teal-200 dark:ring-white/10">
+            <MdInsights className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <p className="text-sm font-bold text-navy-700 dark:text-white">
+              {needsReview ? "Variance needs attention" : "Variance within range"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
+              {vendorLabel} is {Math.abs(variance).toFixed(1)}%{" "}
+              {variance >= 0 ? "above" : "below"} its trailing baseline for{" "}
+              {formatMonth(currentMonth.month)}.
+            </p>
+          </div>
+        </div>
+        <span className="whitespace-nowrap rounded-md bg-white px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-100 dark:bg-navy-900 dark:text-teal-200 dark:ring-white/10">
+          Current metrics
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const CostBreakdownTable: React.FC<{ data: MonthlyMetric[] }> = ({ data }) => {
+  const sortedData = [...data].sort((a, b) => b.cost - a.cost);
+  const average = getAverageCost(data);
+
+  return (
+    <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1fr]">
+      <div>
+        <h3 className="text-sm font-bold text-navy-700 dark:text-white">
+          Highest cost periods
+        </h3>
+        <div className="mt-3 space-y-3">
+          {sortedData.slice(0, 3).map((item) => (
+            <div
+              key={item.month}
+              className="flex items-center justify-between border-b border-gray-200 pb-2 text-sm last:border-b-0 dark:border-white/10"
+            >
+              <span className="text-gray-600 dark:text-gray-400">
+                {formatMonth(item.month)}
+              </span>
+              <span className="font-semibold text-navy-700 dark:text-white">
+                {formatMoney(item.cost)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-navy-700 dark:text-white">
+          Evidence summary
+        </h3>
+        <div className="mt-3 space-y-3 text-sm">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-2 dark:border-white/10">
+            <span className="text-gray-600 dark:text-gray-400">Average</span>
+            <span className="font-semibold text-navy-700 dark:text-white">
+              {formatMoney(average)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between border-b border-gray-200 pb-2 dark:border-white/10">
+            <span className="text-gray-600 dark:text-gray-400">Lowest</span>
+            <span className="font-semibold text-navy-700 dark:text-white">
+              {formatMoney(Math.min(...data.map((d) => d.cost)))}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600 dark:text-gray-400">Highest</span>
+            <span className="font-semibold text-navy-700 dark:text-white">
+              {formatMoney(Math.max(...data.map((d) => d.cost)))}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ForecastSummary: React.FC<{ forecastData: ForecastData }> = ({
+  forecastData,
+}) => (
+  <dl className="mb-6 grid overflow-hidden rounded-md border border-gray-200 bg-gray-50/60 divide-y divide-gray-200 dark:border-white/10 dark:bg-white/5 dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+    <MetricStat
+      label="Best case"
+      value={formatMoney(forecastData.sums.total_best_case)}
+      caption={`${forecastData.growth_rates.best_case}% monthly growth`}
+      valueClassName="text-green-600 dark:text-green-300"
+    />
+    <MetricStat
+      label="Trend forecast"
+      value={formatMoney(forecastData.sums.total_forecast)}
+      caption={`${forecastData.growth_rates.trend_based}% monthly growth`}
+    />
+    <MetricStat
+      label="Worst case"
+      value={formatMoney(forecastData.sums.total_worst_case)}
+      caption={`${forecastData.growth_rates.worst_case}% monthly growth`}
+      valueClassName="text-red-500"
+    />
+  </dl>
+);
+
+const VendorMetrics: React.FC<VendorMetricsProps> = ({
+  vendor,
+  title,
+  demo = false,
+  identifier,
+}) => {
   const [metrics, setMetrics] = useState<VendorMetricsData | null>(null);
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const [error, setError] = useState<APIError | null>(null);
@@ -178,6 +481,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
   const vendorLabel = getVendorLabel(vendor);
   const VendorIcon = getVendorIcon(vendor);
   const configurationIdentifier = identifier || "Default Configuration";
+  const theme = VENDOR_THEME[vendor];
 
   const fetchForecastData = async () => {
     try {
@@ -189,7 +493,9 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       }
 
       const response = await CallBackendService(
-        `/v1/vendors-forecast/${vendor}?identifier=${encodeURIComponent(configurationIdentifier)}`,
+        `/v1/vendors-forecast/${vendor}?identifier=${encodeURIComponent(
+          configurationIdentifier,
+        )}`,
         getAccessTokenSilently,
       );
       setForecastData(response);
@@ -198,7 +504,8 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       console.error("Error fetching forecast data:", error);
       setError({
         message: "Failed to load forecast data",
-        isConnectionError: error.message?.includes('Failed to fetch') || !error.response
+        isConnectionError:
+          error.message?.includes("Failed to fetch") || !error.response,
       });
     } finally {
       setForecastLoading(false);
@@ -215,7 +522,9 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       }
 
       const response = await CallBackendService(
-        `/v1/vendors-metrics/${vendor.toLowerCase()}?identifier=${encodeURIComponent(configurationIdentifier)}`,
+        `/v1/vendors-metrics/${vendor.toLowerCase()}?identifier=${encodeURIComponent(
+          configurationIdentifier,
+        )}`,
         getAccessTokenSilently,
       );
       setMetrics(response);
@@ -224,7 +533,8 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
       console.error(error);
       setError({
         message: error.message || "Failed to fetch vendor metrics",
-        isConnectionError: error.message?.includes('Failed to fetch') || !error.response
+        isConnectionError:
+          error.message?.includes("Failed to fetch") || !error.response,
       });
     } finally {
       setLoading(false);
@@ -245,53 +555,80 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
 
   const getBarChartData = () => {
     if (!metrics?.data || !Array.isArray(metrics.data))
-      return [{ name: "Monthly Cost", data: [], color: "#4318FF" }];
+      return [{ name: "Monthly Cost", data: [], color: theme.chartColor }];
     return [
       {
         name: "Monthly Cost",
         data: metrics.data.map((entry: MonthlyMetric) => entry.cost),
-        color: "#4318FF",
+        color: theme.chartColor,
       },
     ];
   };
 
   const getChartOptions = (data: MonthlyMetric[]): ApexOptions => ({
-    chart: { toolbar: { show: false } },
-    xaxis: { categories: data.map((entry: MonthlyMetric) => entry.month), labels: { show: true, style: { colors: "#A3AED0", fontSize: "14px", fontWeight: "500" } } },
-    yaxis: { show: true, labels: { show: true, style: { colors: "#A3AED0", fontSize: "14px", fontWeight: "500" }, formatter: (value: number) => `$${value.toLocaleString()}` } },
+    chart: {
+      toolbar: { show: false },
+      foreColor: "#64748b",
+      fontFamily: "DM Sans, sans-serif",
+    },
+    grid: {
+      borderColor: "#e5e7eb",
+      strokeDashArray: 4,
+    },
+    xaxis: {
+      categories: data.map((entry: MonthlyMetric) => formatMonth(entry.month)),
+      labels: {
+        show: true,
+        style: { colors: "#64748b", fontSize: "12px", fontWeight: 600 },
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      show: true,
+      labels: {
+        show: true,
+        style: { colors: "#64748b", fontSize: "12px", fontWeight: 600 },
+        formatter: (value: number) => formatMoney(value),
+      },
+    },
     fill: {
-      type: 'gradient',
+      type: "gradient",
       gradient: {
-        type: 'vertical',
-        shadeIntensity: 0.5,
-        opacityFrom: 0.8,
-        opacityTo: 0.2,
-      }
+        type: "vertical",
+        shadeIntensity: 0.1,
+        opacityFrom: 0.9,
+        opacityTo: 0.55,
+      },
     },
     dataLabels: { enabled: false },
-    plotOptions: { bar: { borderRadius: 3, columnWidth: "40px" } },
+    plotOptions: { bar: { borderRadius: 4, columnWidth: "42%" } },
     annotations: {
-      yaxis: [{
-        y: data.reduce((sum, item) => sum + item.cost, 0) / data.length,
-        borderColor: '#FEB019',
-        label: {
-          text: 'Average Cost',
-          style: { color: '#fff' }
-        }
-      }]
+      yaxis: [
+        {
+          y: getAverageCost(data),
+          borderColor: "#14b8a6",
+          strokeDashArray: 5,
+          label: {
+            text: "Avg",
+            borderColor: "#14b8a6",
+            style: { color: "#0f172a", background: "#ccfbf1" },
+          },
+        },
+      ],
     },
     tooltip: {
-      theme: 'dark',
+      theme: "dark",
       y: {
-        formatter: (value) => `$${value.toLocaleString()}`
-      }
-    }
+        formatter: (value) => formatExactMoney(value),
+      },
+    },
   });
 
   const handleExportCSV = async () => {
     try {
       const token = await getAccessTokenSilently();
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
       const query = new URLSearchParams({
         format: "csv",
         identifier: configurationIdentifier,
@@ -302,11 +639,11 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${vendor}_forecast.csv`;
       document.body.appendChild(a);
@@ -318,126 +655,49 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
     }
   };
 
-  const SummaryMetrics: React.FC<{ data: MonthlyMetric[] }> = ({ data }) => {
-    const currentMonth = data[data.length - 1];
-    const previousMonth = data[data.length - 2];
-    const monthlyChange = ((currentMonth.cost - previousMonth.cost) / previousMonth.cost) * 100;
-    const totalSpend = data.reduce((sum, item) => sum + item.cost, 0);
-
-    return (
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Current Month</p>
-          <p className="text-2xl font-bold text-navy-700 dark:text-white">
-            ${currentMonth.cost.toLocaleString()}
-          </p>
-        </div>
-        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Monthly Change</p>
-          <p className={`text-2xl font-bold ${monthlyChange >= 0 ? 'text-red-500' : 'text-green-500'}`}>
-            {monthlyChange >= 0 ? '+' : ''}{monthlyChange.toFixed(1)}%
-          </p>
-        </div>
-        <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Total ({data.length} months)
-          </p>
-          <p className="text-2xl font-bold text-navy-700 dark:text-white">
-            ${totalSpend.toLocaleString()}
-          </p>
-        </div>
-      </div>
-    );
-  };
-
-  const CostBreakdownTable: React.FC<{ data: MonthlyMetric[] }> = ({ data }) => {
-    const sortedData = [...data].sort((a, b) => b.cost - a.cost);
-    const average = data.reduce((sum, item) => sum + item.cost, 0) / data.length;
-
-    return (
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-4">Cost Analysis</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-sm text-gray-500 mb-2">Highest Cost Months</h4>
-            <div className="space-y-2">
-              {sortedData.slice(0, 3).map(item => (
-                <div key={item.month} className="flex justify-between">
-                  <span>{item.month}</span>
-                  <span className="font-semibold">${item.cost.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm text-gray-500 mb-2">Cost Statistics</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Average</span>
-                <span className="font-semibold">${average.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Min Cost</span>
-                <span className="font-semibold">
-                  ${Math.min(...data.map(d => d.cost)).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Max Cost</span>
-                <span className="font-semibold">
-                  ${Math.max(...data.map(d => d.cost)).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
-      <Card extra="pb-10 p-[20px] bg-white dark:!bg-gray-800">
+      <Card extra="overflow-hidden !p-0 bg-white dark:!bg-gray-800">
         <div className="flex h-64 items-center justify-center">
           <div className="text-center">
-            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-solid border-brand-500 border-t-transparent mx-auto"></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading metrics...</p>
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-solid border-brand-500 border-t-transparent"></div>
+            <p className="text-gray-600 dark:text-gray-400">
+              Loading source evidence...
+            </p>
           </div>
         </div>
       </Card>
     );
   }
 
-  if (error) {
+  if (error && !metrics) {
     return (
-      <Card extra="pb-10 p-[20px] bg-white dark:!bg-gray-800">
-        <div className="flex h-64 items-center justify-center">
-          <div className="text-center">
+      <Card extra="overflow-hidden !p-0 bg-white dark:!bg-gray-800">
+        <div className="flex h-64 items-center justify-center p-6">
+          <div className="max-w-sm text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-red-50 text-red-500 dark:bg-red-500/10">
+              <MdRefresh className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <p className="mb-2 font-semibold text-red-500">
+              {error.isConnectionError ? "API connection error" : error.message}
+            </p>
             {error.isConnectionError ? (
-              <>
-                <div className="mb-4">
-                  <svg className="h-12 w-12 mx-auto text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                </div>
-                <p className="text-red-500 font-medium mb-2">API Connection Error</p>
-                <p className="text-gray-600 dark:text-gray-400 text-sm">
-                  Unable to connect to the API server. Please check your connection or try again later.
-                </p>
-                <button
-                  onClick={() => {
-                    setError(null);
-                    setLoading(true);
-                    fetchData();
-                  }}
-                  className="mt-4 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors"
-                >
-                  Retry Connection
-                </button>
-              </>
-            ) : (
-              <p className="text-red-500">{error.message}</p>
-            )}
+              <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
+                The dashboard could not reach the API server. Retry the source
+                refresh when the backend is available.
+              </p>
+            ) : null}
+            <button
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                fetchData();
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
+            >
+              <MdRefresh className="h-4 w-4" aria-hidden="true" />
+              Retry
+            </button>
           </div>
         </div>
       </Card>
@@ -445,112 +705,201 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
   }
 
   const health = deriveSourceHealth(metrics);
+  const hasMetrics = metrics?.data && metrics.data.length > 0;
 
   return (
-    <Card extra="!p-[20px] text-center bg-white dark:!bg-gray-800">
-      <div className="relative flex flex-row items-start justify-between">
-        <div className="flex items-center">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-navy-700">
-            <VendorIcon className="h-6 w-6 text-brand-500 dark:text-white" />
+    <Card extra="overflow-hidden !p-0 bg-white dark:!bg-gray-800">
+      <header className="border-b border-gray-200 p-5 dark:border-white/10">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md ring-1 ${theme.iconWrapClass}`}
+            >
+              <VendorIcon className={`h-6 w-6 ${theme.iconClass}`} />
+            </div>
+            <div className="min-w-0">
+              <p
+                className={`text-xs font-semibold uppercase ${theme.accentClass}`}
+              >
+                {vendorLabel} source
+              </p>
+              <h5 className="mt-1 truncate text-lg font-bold text-navy-700 dark:text-white">
+                {title}
+              </h5>
+              <p className="mt-1 truncate text-sm text-gray-600 dark:text-gray-400">
+                {configurationIdentifier}
+              </p>
+            </div>
           </div>
-          <h5 className="ml-4 text-lg font-bold text-gray-700 dark:text-white">
-            {title}
-          </h5>
+          <SourceHealthBadge health={health} />
         </div>
-        <SourceHealthBadge health={health} />
-      </div>
-      {(metrics?.data_through || metrics?.record_count != null) && (
-        <p className="mt-1 text-left text-xs text-gray-600 dark:text-gray-400">
-          {metrics?.data_through
-            ? `Data through ${metrics.data_through}`
-            : "Data range unknown"}
-          {metrics?.record_count != null
-            ? ` · ${metrics.record_count} monthly records`
-            : ""}
-        </p>
-      )}
-      <div className="flex flex-col">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-700 dark:text-white">
-            {vendorLabel} Monthly Costs
-          </h2>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setActiveTab("actual")}
-              className={`rounded px-4 py-2 ${
-                activeTab === "actual"
-                  ? "bg-brand-500 text-white"
-                  : "bg-gray-100 text-gray-600 dark:bg-navy-700 dark:text-navy-200"
-              }`}
-            >
-              Actual
-            </button>
-            <button
-              onClick={() => setActiveTab("forecast")}
-              className={`rounded px-4 py-2 ${
-                activeTab === "forecast"
-                  ? "bg-brand-500 text-white"
-                  : "bg-gray-100 text-gray-600 dark:bg-navy-700 dark:text-gray-200"
-              }`}
-            >
-              Forecast
-            </button>
-            {activeTab === "forecast" && (
+      </header>
+
+      <section className="p-5">
+        <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-navy-700 dark:text-white">
+              Cost evidence
+            </h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Observed spend, freshness, and forecast envelope for this source.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-md border border-gray-200 bg-gray-50 p-1 dark:border-white/10 dark:bg-white/5">
+              <button
+                onClick={() => setActiveTab("actual")}
+                className={`inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-semibold transition-colors ${
+                  activeTab === "actual"
+                    ? "bg-white text-brand-700 shadow-sm dark:bg-navy-900 dark:text-white"
+                    : "text-gray-600 hover:text-navy-700 dark:text-gray-300 dark:hover:text-white"
+                }`}
+              >
+                <MdTableChart className="h-4 w-4" aria-hidden="true" />
+                Actual
+              </button>
+              <button
+                onClick={() => setActiveTab("forecast")}
+                className={`inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-semibold transition-colors ${
+                  activeTab === "forecast"
+                    ? "bg-white text-brand-700 shadow-sm dark:bg-navy-900 dark:text-white"
+                    : "text-gray-600 hover:text-navy-700 dark:text-gray-300 dark:hover:text-white"
+                }`}
+              >
+                <MdShowChart className="h-4 w-4" aria-hidden="true" />
+                Forecast
+              </button>
+            </div>
+
+            {activeTab === "forecast" && !demo ? (
               <button
                 onClick={handleExportCSV}
-                className="rounded bg-green-500 px-4 py-2 text-white hover:bg-green-600"
+                className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-semibold text-navy-700 transition-colors hover:border-brand-200 hover:bg-brand-50 dark:border-white/10 dark:text-white dark:hover:bg-white/10"
               >
-                Export CSV
+                <MdDownload className="h-4 w-4" aria-hidden="true" />
+                Export
               </button>
-            )}
+            ) : null}
+
             <Link
-              to={`/admin/vendors/${vendor}`}
-              className="rounded bg-brand-500 px-4 py-2 text-white hover:bg-brand-600"
+              to={demo ? "/auth/sign-in" : `/admin/vendors/${vendor}`}
+              className="inline-flex items-center gap-2 rounded-md bg-brand-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
             >
-              Details
+              {demo ? "Connect source" : "Details"}
+              <MdOpenInNew className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>
         </div>
 
-        {activeTab === "actual" && (
-          <>
-            {error ? (
-              <div className="flex h-64 items-center justify-center">
-                <p className="text-red-500">{error.message}</p>
+        {activeTab === "actual" ? (
+          hasMetrics ? (
+            <>
+              <SummaryMetrics data={metrics.data} metrics={metrics} />
+              <div className="mt-5 h-[280px] w-full">
+                <BarChart
+                  chartData={getBarChartData()}
+                  chartOptions={getChartOptions(metrics.data)}
+                />
               </div>
-            ) : loading ? (
-              <div className="flex h-64 items-center justify-center">
-                <p className="text-gray-500">Loading data...</p>
-              </div>
-            ) : metrics?.data && metrics.data.length > 0 ? (
-              <>
-                <SummaryMetrics data={metrics.data} />
-                <div className="h-[300px] w-full">
-                  <BarChart
-                    chartData={getBarChartData()}
-                    chartOptions={getChartOptions(metrics.data)}
-                  />
-                </div>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <TrendIndicator data={metrics.data} />
-                <CostBreakdownTable data={metrics.data} />
-                <div className="mt-6 overflow-x-auto">
-                  <table className="w-full">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {metrics.data_through
+                    ? `Data through ${formatMonth(metrics.data_through)}`
+                    : "Data range reported by the source API"}
+                </p>
+              </div>
+              <VarianceCue data={metrics.data} vendorLabel={vendorLabel} />
+              <CostBreakdownTable data={metrics.data} />
+              <div className="mt-6 overflow-x-auto">
+                <table className="w-full min-w-[420px] text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-white/10 dark:text-gray-400">
+                      <th className="py-3 text-left font-semibold">Month</th>
+                      <th className="py-3 text-right font-semibold">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.data.map((entry) => (
+                      <tr
+                        key={entry.month}
+                        className="border-b border-gray-100 last:border-b-0 dark:border-white/5"
+                      >
+                        <td className="py-3 text-gray-700 dark:text-gray-300">
+                          {formatMonth(entry.month)}
+                        </td>
+                        <td className="py-3 text-right font-semibold text-navy-700 dark:text-white">
+                          {formatExactMoney(entry.cost)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="flex h-64 items-center justify-center rounded-md border border-dashed border-gray-300 dark:border-white/20">
+              <p className="text-center text-gray-500">
+                No API configuration found for {vendorLabel}.
+              </p>
+            </div>
+          )
+        ) : (
+          <>
+            {forecastLoading ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-solid border-brand-500 border-t-transparent"></div>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Loading forecast data...
+                  </p>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="flex h-64 items-center justify-center rounded-md border border-dashed border-red-200 bg-red-50/50 p-6 text-center dark:border-red-400/20 dark:bg-red-500/10">
+                <p className="text-sm font-semibold text-red-500">
+                  {error.message}
+                </p>
+              </div>
+            ) : forecastData?.forecast &&
+              Array.isArray(forecastData.forecast) &&
+              forecastData.forecast.length > 0 ? (
+              <>
+                <ForecastSummary forecastData={forecastData} />
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="py-3 text-left">Month</th>
-                        <th className="py-3 text-right">Cost</th>
+                      <tr className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-white/10 dark:text-gray-400">
+                        <th className="py-3 text-left font-semibold">Month</th>
+                        <th className="py-3 text-right font-semibold">
+                          Best case
+                        </th>
+                        <th className="py-3 text-right font-semibold">
+                          Trend forecast
+                        </th>
+                        <th className="py-3 text-right font-semibold">
+                          Worst case
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {metrics.data.map((entry, index) => (
-                        <tr key={index} className="border-b border-gray-200">
-                          <td className="py-3">{entry.month}</td>
-                          <td className="py-3 text-right">
-                            $
-                            {entry.cost.toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
+                      {forecastData.forecast.map((entry) => (
+                        <tr
+                          key={entry.month}
+                          className="border-b border-gray-100 last:border-b-0 dark:border-white/5"
+                        >
+                          <td className="py-3 text-gray-700 dark:text-gray-300">
+                            {formatMonth(entry.month)}
+                          </td>
+                          <td className="py-3 text-right font-semibold text-green-600 dark:text-green-300">
+                            {formatExactMoney(entry.best_case)}
+                          </td>
+                          <td className="py-3 text-right font-semibold text-navy-700 dark:text-white">
+                            {formatExactMoney(entry.cost)}
+                          </td>
+                          <td className="py-3 text-right font-semibold text-red-500">
+                            {formatExactMoney(entry.worst_case)}
                           </td>
                         </tr>
                       ))}
@@ -559,128 +908,13 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({ vendor, title, demo = fal
                 </div>
               </>
             ) : (
-              <div className="flex h-64 items-center justify-center">
-                <p className="text-center text-gray-500">
-                  No API configuration found for {vendorLabel}
-                </p>
+              <div className="flex h-64 items-center justify-center rounded-md border border-dashed border-gray-300 dark:border-white/20">
+                <p className="text-gray-500">No forecast data available.</p>
               </div>
             )}
           </>
         )}
-
-        {activeTab === "forecast" && (
-          <>
-            {forecastLoading ? (
-              <div className="flex h-64 items-center justify-center">
-                <div className="text-center">
-                  <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-solid border-brand-500 border-t-transparent mx-auto"></div>
-                  <p className="text-gray-600 dark:text-gray-400">Loading forecast data...</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="flex h-64 items-center justify-center">
-                <p className="text-red-500">{error.message}</p>
-              </div>
-            ) : forecastData?.forecast &&
-              Array.isArray(forecastData.forecast) &&
-              forecastData.forecast.length > 0 ? (
-              <>
-                <div className="mb-6 grid grid-cols-3 gap-4">
-                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
-                    <p className="text-sm text-gray-700 dark:text-gray-400">Best Case Total</p>
-                    <p className="text-xl text-green-500">
-                      $
-                      {forecastData.sums.total_best_case.toLocaleString(
-                        "en-US",
-                        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
-                      )}
-                      <span className="mt-1 block text-sm text-gray-400">
-                        MoM Growth: {forecastData.growth_rates.best_case}%
-                      </span>
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
-                    <p className="text-sm text-gray-700 dark:text-gray-400">
-                      Trend-based Forecast Total
-                    </p>
-                    <p className="text-xl text-navy-700 dark:text-white">
-                      $
-                      {forecastData.sums.total_forecast.toLocaleString(
-                        "en-US",
-                        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
-                      )}
-                      <span className="mt-1 block text-sm text-gray-400">
-                        MoM Growth: {forecastData.growth_rates.trend_based}%
-                      </span>
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-900">
-                    <p className="text-sm text-gray-700 dark:text-gray-400">Worst Case Total</p>
-                    <p className="text-xl text-red-500">
-                      $
-                      {forecastData.sums.total_worst_case.toLocaleString(
-                        "en-US",
-                        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
-                      )}
-                      <span className="mt-1 block text-sm text-gray-400">
-                        MoM Growth: {forecastData.growth_rates.worst_case}%
-                      </span>
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6 overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="py-3 text-left">Month</th>
-                        <th className="py-3 text-right">Best Case</th>
-                        <th className="py-3 text-right">
-                          Trend-based Forecast
-                        </th>
-                        <th className="py-3 text-right">Worst Case</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {forecastData.forecast.map(
-                        (entry: any, index: number) => (
-                          <tr key={index} className="border-b border-gray-200">
-                            <td className="py-3">{entry.month}</td>
-                            <td className="py-3 text-right text-green-500">
-                              $
-                              {entry.best_case.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td className="py-3 text-right">
-                              $
-                              {entry.cost.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td className="py-3 text-right text-red-500">
-                              $
-                              {entry.worst_case.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            ) : (
-              <div className="flex h-64 items-center justify-center">
-                <p className="text-gray-500">No forecast data available</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      </section>
     </Card>
   );
 };

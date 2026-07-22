@@ -1,7 +1,5 @@
-import React, { useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "components/navbar";
-import Sidebar from "components/sidebar";
 import routes from "routes";
 
 // Helper function to generate routes
@@ -21,17 +19,14 @@ const getRoutes = (routes: any[]) => {
 };
 
 export default function Admin(props: { [x: string]: any }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="flex h-full min-h-screen w-full bg-gray-50 dark:bg-navy-900">
-      <Sidebar open={open} onClose={() => setOpen(false)} />
+    <div className="min-h-screen w-full overflow-x-hidden bg-gray-50 dark:bg-navy-900">
       {/* Navbar & Main Content */}
       <div className="h-full w-full">
-        <main className={`mx-[12px] h-full flex-none transition-all md:pr-2`}>
+        <main className="mx-auto h-full max-w-[1680px] px-3 transition-all md:px-4">
           <div>
-            <Navbar onOpenSidenav={() => setOpen(true)} />
-            <div className="pt-5s mx-auto mb-auto min-h-[84vh] p-2 md:pr-2">
+            <Navbar />
+            <div className="mx-auto mb-auto min-h-[84vh] pb-4">
               <Routes>
                 {getRoutes(routes)}
                 <Route path="/" element={<Navigate to="/admin/default" replace />} />

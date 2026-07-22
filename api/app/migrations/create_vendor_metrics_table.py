@@ -22,6 +22,10 @@ def upgrade():
                         identifier VARCHAR NOT NULL,
                         month VARCHAR NOT NULL,
                         cost FLOAT NOT NULL,
+                        source_provider VARCHAR NULL,
+                        source_period_start DATE NULL,
+                        source_period_end DATE NULL,
+                        provider_currency VARCHAR NULL,
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         CONSTRAINT uq_vendor_metrics_user_vendor_identifier_month
                             UNIQUE (user_id, vendor, identifier, month)

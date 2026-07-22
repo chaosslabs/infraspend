@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON, Date
 from sqlalchemy.orm import relationship, declared_attr
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -106,6 +106,10 @@ class VendorMetrics(Base):
     identifier = Column(String)  # Configuration identifier
     month = Column(String)  # Format: MM-YYYY
     cost = Column(sqlalchemy.Float)
+    source_provider = Column(String, nullable=True)
+    source_period_start = Column(Date, nullable=True)
+    source_period_end = Column(Date, nullable=True)
+    provider_currency = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

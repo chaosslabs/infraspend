@@ -96,7 +96,7 @@ describe('VendorMetrics', () => {
 
     // AWS demo data has a failed latest attempt over cached data.
     expect(
-      screen.getByText('Cached — last refresh failed')
+      screen.getByText('Cached - refresh failed')
     ).toBeInTheDocument();
   });
 });

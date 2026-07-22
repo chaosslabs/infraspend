@@ -9,7 +9,11 @@
 		font-family: 'DM Sans', sans-serif !important;
 		font-feature-settings: 'kern' !important;
 		-webkit-font-smoothing: antialiased;
-		letter-spacing: -0.5px;
+		letter-spacing: 0;
+	}
+
+	body {
+		background: #f6f8fb;
 	}
 }
 

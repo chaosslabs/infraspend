@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -12,6 +12,7 @@ from app.models import (
     DatadogAPIConfiguration,
     HerokuAPIConfiguration,
     User,
+    VendorMetricIngestionRun,
     VendorMetrics,
 )
 from app.services.monthly_costs import build_monthly_cost_record
@@ -48,6 +49,58 @@ def shift_month(date: datetime, months: int) -> datetime:
     year = date.year + month_index // 12
     month = month_index % 12 + 1
     return date.replace(year=year, month=month, day=1)
+
+
+def required_months_for_service():
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=365)
+    current_date = start_date
+    months = []
+    while current_date <= end_date:
+        months.append(current_date.strftime("%m-%Y"))
+        current_date = (current_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+    return months
+
+
+def add_successful_ingestion_run(
+    db_session,
+    user,
+    vendor="aws",
+    identifier="test-config",
+    completed_at=None,
+):
+    completed_at = completed_at or datetime.utcnow()
+    run = VendorMetricIngestionRun(
+        user_id=user.id,
+        vendor=vendor,
+        identifier=identifier,
+        started_at=completed_at - timedelta(minutes=1),
+        completed_at=completed_at,
+        requested_period_start=completed_at.date().replace(day=1),
+        requested_period_end=shift_month(completed_at, 1).date(),
+        source_period_start=completed_at.date().replace(day=1),
+        source_period_end=shift_month(completed_at, 1).date(),
+        status="success",
+        records_received=1,
+        records_stored=1,
+    )
+    db_session.add(run)
+    db_session.commit()
+    return run
+
+
+def seed_required_metrics(db_session, user, vendor="aws", identifier="test-config"):
+    for index, month in enumerate(required_months_for_service()):
+        db_session.add(
+            VendorMetrics(
+                user_id=user.id,
+                vendor=vendor,
+                identifier=identifier,
+                month=month,
+                cost=100 + index,
+            )
+        )
+    db_session.commit()
 
 
 @pytest.fixture
@@ -121,6 +174,39 @@ def add_heroku_config(db_session, user, identifier="test-config"):
     return config
 
 
+def test_ingestion_run_complete_validates_terminal_transition(user):
+    run = VendorMetricIngestionRun(
+        user_id=user.id,
+        vendor="aws",
+        identifier="test-config",
+        status="running",
+    )
+
+    run.complete(
+        status="success",
+        completed_at=datetime.utcnow(),
+        records_received=2,
+        records_stored=2,
+    )
+
+    assert run.status == "success"
+    assert run.completed_at is not None
+    with pytest.raises(ValueError, match="Only running ingestion runs"):
+        run.complete(status="failed", completed_at=datetime.utcnow())
+
+
+def test_ingestion_run_rejects_unknown_status(user):
+    run = VendorMetricIngestionRun(
+        user_id=user.id,
+        vendor="aws",
+        identifier="test-config",
+        status="running",
+    )
+
+    with pytest.raises(ValueError, match="Invalid terminal ingestion status"):
+        run.complete(status="greenish", completed_at=datetime.utcnow())
+
+
 class TestVendorMetricsService:
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_aws_success(
@@ -142,6 +228,17 @@ class TestVendorMetricsService:
 
         assert metrics_by_month(result) == metrics_by_month(mock_costs_response)
         assert db_session.query(VendorMetrics).count() == 2
+        run = db_session.query(VendorMetricIngestionRun).one()
+        assert run.user_id == user.id
+        assert run.vendor == "aws"
+        assert run.identifier == "test-config"
+        assert run.status == "success"
+        assert run.completed_at is not None
+        assert run.requested_period_start is not None
+        assert run.requested_period_end is not None
+        assert run.records_received == 2
+        assert run.records_stored == 2
+        assert run.error_category is None
         stored_metric = (
             db_session.query(VendorMetrics)
             .filter(VendorMetrics.month == mock_costs_response["data"][0]["month"])
@@ -170,6 +267,20 @@ class TestVendorMetricsService:
             == mock_costs_response["data"][0]["period_end"]
         )
         assert result_metric["provider_currency"] == "USD"
+        assert (
+            run.source_period_start.isoformat()
+            == mock_costs_response["data"][0]["period_start"]
+        )
+        assert (
+            run.source_period_end.isoformat()
+            == mock_costs_response["data"][1]["period_end"]
+        )
+        assert (
+            result["last_success_at"]
+            == run.completed_at.replace(microsecond=0).isoformat() + "Z"
+        )
+        assert result["last_attempt_at"] == result["last_success_at"]
+        assert result["last_attempt_status"] == "success"
         mock_aws_instance.get_monthly_costs.assert_called_once()
 
     @pytest.mark.asyncio
@@ -356,6 +467,11 @@ class TestVendorMetricsService:
         previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
             "%m-%Y"
         )
+        prior_success = add_successful_ingestion_run(
+            db_session,
+            user,
+            completed_at=datetime.utcnow() - timedelta(hours=2),
+        )
         db_session.add(
             VendorMetrics(
                 user_id=user.id,
@@ -374,7 +490,9 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_aws_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs.side_effect = Exception("vendor down")
+            mock_aws_instance.get_monthly_costs.side_effect = Exception(
+                "vendor down sentinel-secret-token"
+            )
             mock_aws_service.return_value = mock_aws_instance
 
             # Must not raise: cached data is served with a failed-attempt label.
@@ -383,7 +501,18 @@ class TestVendorMetricsService:
         assert result["last_attempt_status"] == "failed"
         assert result["record_count"] == 1
         assert metrics_by_month(result) == {previous_month: 42.0}
-        assert result["last_success_at"] is not None
+        assert (
+            result["last_success_at"]
+            == prior_success.completed_at.replace(microsecond=0).isoformat() + "Z"
+        )
+        runs = (
+            db_session.query(VendorMetricIngestionRun)
+            .order_by(VendorMetricIngestionRun.started_at)
+            .all()
+        )
+        assert [run.status for run in runs] == ["success", "failed"]
+        assert runs[-1].error_category == "provider_error"
+        assert "sentinel-secret-token" not in (runs[-1].error_category or "")
 
     @pytest.mark.asyncio
     async def test_failed_refresh_without_cache_raises(self, db_session, user):
@@ -395,12 +524,78 @@ class TestVendorMetricsService:
             autospec=True,
         ) as mock_aws_service:
             mock_aws_instance = Mock()
-            mock_aws_instance.get_monthly_costs.side_effect = Exception("vendor down")
+            mock_aws_instance.get_monthly_costs.side_effect = Exception(
+                "vendor down sentinel-secret-token"
+            )
             mock_aws_service.return_value = mock_aws_instance
 
             # No cached data to fall back to: the failure must surface.
             with pytest.raises(Exception, match="Failed to get and store aws metrics"):
                 await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        run = db_session.query(VendorMetricIngestionRun).one()
+        assert run.status == "failed"
+        assert run.completed_at is not None
+        assert run.records_received == 0
+        assert run.records_stored == 0
+        assert run.error_category == "provider_error"
+        assert "sentinel-secret-token" not in (run.error_category or "")
+
+    @pytest.mark.asyncio
+    async def test_storage_failure_completes_failed_run_and_preserves_cache(
+        self, db_session, user, cost_response_for
+    ):
+        add_aws_config(db_session, user)
+        previous_month = shift_month(datetime.now().replace(day=1), -1).strftime(
+            "%m-%Y"
+        )
+        prior_success = add_successful_ingestion_run(
+            db_session,
+            user,
+            completed_at=datetime.utcnow() - timedelta(hours=2),
+        )
+        db_session.add(
+            VendorMetrics(
+                user_id=user.id,
+                vendor="aws",
+                identifier="test-config",
+                month=previous_month,
+                cost=42.0,
+            )
+        )
+        db_session.commit()
+
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service, patch.object(
+            service,
+            "_store_metrics",
+            side_effect=Exception("database wrote sentinel-secret-token"),
+        ):
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.return_value = cost_response_for("aws")
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        assert result["last_attempt_status"] == "failed"
+        assert (
+            result["last_success_at"]
+            == prior_success.completed_at.replace(microsecond=0).isoformat() + "Z"
+        )
+        assert metrics_by_month(result) == {previous_month: 42.0}
+        failed_run = (
+            db_session.query(VendorMetricIngestionRun)
+            .filter(VendorMetricIngestionRun.status == "failed")
+            .one()
+        )
+        assert failed_run.records_received == 2
+        assert failed_run.records_stored == 0
+        assert failed_run.error_category == "storage_error"
+        assert "sentinel-secret-token" not in (failed_run.error_category or "")
 
     @pytest.mark.asyncio
     async def test_partial_refresh_when_current_month_missing(self, db_session, user):
@@ -442,6 +637,62 @@ class TestVendorMetricsService:
             result = await service.get_and_store_vendor_metrics("aws", "test-config")
 
         assert result["last_attempt_status"] == "partial"
+        run = db_session.query(VendorMetricIngestionRun).one()
+        assert run.status == "partial"
+        assert run.records_received == 1
+        assert run.records_stored == 1
+        assert run.error_category == "incomplete_source"
+
+    @pytest.mark.asyncio
+    async def test_partial_refresh_records_row_validation_failure(
+        self, db_session, user
+    ):
+        add_aws_config(db_session, user)
+        previous_month_date = shift_month(datetime.now().replace(day=1), -1)
+        current_month_date = datetime.now().replace(day=1)
+        service = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            mock_aws_instance = Mock()
+            mock_aws_instance.get_monthly_costs.return_value = {
+                "data": [
+                    build_monthly_cost_record(
+                        provider="aws",
+                        period_start=previous_month_date.date(),
+                        period_end=shift_month(previous_month_date, 1).date(),
+                        cost=100.0,
+                        currency="USD",
+                    ),
+                    {
+                        "month": current_month_date.strftime("%m-%Y"),
+                        "cost": "not numeric",
+                        "provider": "aws",
+                        "period_start": current_month_date.date().isoformat(),
+                        "period_end": shift_month(current_month_date, 1)
+                        .date()
+                        .isoformat(),
+                        "currency": "USD",
+                    },
+                ]
+            }
+            mock_aws_service.return_value = mock_aws_instance
+
+            result = await service.get_and_store_vendor_metrics("aws", "test-config")
+
+        run = db_session.query(VendorMetricIngestionRun).one()
+        assert result["last_attempt_status"] == "partial"
+        assert metrics_by_month(result) == {
+            previous_month_date.strftime("%m-%Y"): 100.0
+        }
+        assert run.status == "partial"
+        assert run.records_received == 2
+        assert run.records_stored == 1
+        assert run.error_category == "row_validation"
+        assert run.source_period_start == previous_month_date.date()
+        assert run.source_period_end == shift_month(previous_month_date, 1).date()
 
     @pytest.mark.asyncio
     async def test_empty_source_reports_no_records(self, db_session, user):
@@ -463,6 +714,84 @@ class TestVendorMetricsService:
         assert result["data"] == []
         assert result["data_through"] is None
         assert result["last_success_at"] is None
+        assert result["last_attempt_status"] == "partial"
+        run = db_session.query(VendorMetricIngestionRun).one()
+        assert run.status == "partial"
+        assert run.records_received == 0
+        assert run.records_stored == 0
+        assert run.error_category == "incomplete_source"
+
+    @pytest.mark.asyncio
+    async def test_cached_read_recovers_persisted_runs_without_resetting_health(
+        self, db_session, user
+    ):
+        add_aws_config(db_session, user)
+        seed_required_metrics(db_session, user)
+        now = datetime.utcnow()
+        target_success = add_successful_ingestion_run(
+            db_session,
+            user,
+            completed_at=now - timedelta(hours=3),
+        )
+        target_failed = VendorMetricIngestionRun(
+            user_id=user.id,
+            vendor="aws",
+            identifier="test-config",
+            started_at=now - timedelta(hours=1),
+            completed_at=now - timedelta(minutes=59),
+            requested_period_start=now.date().replace(day=1),
+            requested_period_end=shift_month(now, 1).date(),
+            status="failed",
+            records_received=0,
+            records_stored=0,
+            error_category="provider_error",
+        )
+        db_session.add(target_failed)
+
+        other_user = User(sub="other-user")
+        db_session.add(other_user)
+        db_session.flush()
+        add_successful_ingestion_run(
+            db_session,
+            other_user,
+            completed_at=now,
+        )
+        add_successful_ingestion_run(
+            db_session,
+            user,
+            identifier="other-config",
+            completed_at=now,
+        )
+        db_session.commit()
+
+        new_service_instance = VendorMetricsService(user.id, db_session)
+
+        with patch(
+            "app.services.vendor_metrics_service.AWSService",
+            autospec=True,
+        ) as mock_aws_service:
+            result = await new_service_instance.get_and_store_vendor_metrics(
+                "aws", "test-config"
+            )
+
+        mock_aws_service.assert_not_called()
+        assert result["last_attempt_status"] == "failed"
+        assert (
+            result["last_attempt_at"]
+            == target_failed.completed_at.replace(microsecond=0).isoformat() + "Z"
+        )
+        assert (
+            result["last_success_at"]
+            == target_success.completed_at.replace(microsecond=0).isoformat() + "Z"
+        )
+        assert (
+            db_session.query(VendorMetricIngestionRun)
+            .filter(VendorMetricIngestionRun.user_id == user.id)
+            .filter(VendorMetricIngestionRun.vendor == "aws")
+            .filter(VendorMetricIngestionRun.identifier == "test-config")
+            .count()
+            == 2
+        )
 
     @pytest.mark.asyncio
     async def test_get_and_store_vendor_metrics_invalid_vendor(self, db_session, user):
@@ -513,6 +842,13 @@ class TestVendorMetricsService:
         assert any("AWS metrics updated" in msg for msg in results["success"])
         assert any("Datadog metrics updated" in msg for msg in results["success"])
         assert any("Heroku metrics updated" in msg for msg in results["success"])
+        runs = db_session.query(VendorMetricIngestionRun).all()
+        assert len(runs) == 3
+        assert {(run.vendor, run.identifier, run.status) for run in runs} == {
+            ("aws", "test-aws", "success"),
+            ("datadog", "test-datadog", "success"),
+            ("heroku", "test-heroku", "success"),
+        }
 
     @pytest.mark.asyncio
     async def test_batch_update_all_vendor_metrics_partial_failure(
@@ -559,3 +895,12 @@ class TestVendorMetricsService:
         assert any(
             "Failed to update Datadog metrics" in msg for msg in results["failed"]
         )
+        runs = db_session.query(VendorMetricIngestionRun).all()
+        assert len(runs) == 3
+        assert {(run.vendor, run.identifier, run.status) for run in runs} == {
+            ("aws", "test-aws", "success"),
+            ("datadog", "test-datadog", "failed"),
+            ("heroku", "test-heroku", "success"),
+        }
+        failed_run = next(run for run in runs if run.vendor == "datadog")
+        assert failed_run.error_category == "provider_error"

@@ -6,6 +6,20 @@ import sqlalchemy
 
 Base = declarative_base()
 
+INGESTION_RUN_RUNNING_STATUS = "running"
+INGESTION_RUN_TERMINAL_STATUSES = ("success", "partial", "failed")
+INGESTION_RUN_STATUSES = (
+    INGESTION_RUN_RUNNING_STATUS,
+    *INGESTION_RUN_TERMINAL_STATUSES,
+)
+INGESTION_RUN_ERROR_CATEGORIES = (
+    "provider_error",
+    "row_validation",
+    "storage_error",
+    "configuration_error",
+    "incomplete_source",
+)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -22,6 +36,9 @@ class User(Base):
         "HerokuAPIConfiguration", back_populates="user"
     )
     budget_plans = relationship("BudgetPlan", back_populates="user")
+    metric_ingestion_runs = relationship(
+        "VendorMetricIngestionRun", back_populates="user"
+    )
 
 
 class APIConfiguration(Base):
@@ -125,3 +142,77 @@ class VendorMetrics(Base):
             name="uq_vendor_metrics_user_vendor_identifier_month",
         ),
     )
+
+
+class VendorMetricIngestionRun(Base):
+    __tablename__ = "vendor_metric_ingestion_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    vendor = Column(String, nullable=False, index=True)
+    identifier = Column(String, nullable=False, index=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    requested_period_start = Column(Date, nullable=True)
+    requested_period_end = Column(Date, nullable=True)
+    source_period_start = Column(Date, nullable=True)
+    source_period_end = Column(Date, nullable=True)
+    status = Column(
+        String, default=INGESTION_RUN_RUNNING_STATUS, nullable=False, index=True
+    )
+    records_received = Column(Integer, default=0, nullable=False)
+    records_stored = Column(Integer, default=0, nullable=False)
+    error_category = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="metric_ingestion_runs")
+
+    __table_args__ = (
+        sqlalchemy.CheckConstraint(
+            "status IN ('running', 'success', 'partial', 'failed')",
+            name="ck_vendor_metric_ingestion_runs_status",
+        ),
+        sqlalchemy.CheckConstraint(
+            "error_category IS NULL OR error_category IN "
+            "('provider_error', 'row_validation', 'storage_error', "
+            "'configuration_error', 'incomplete_source')",
+            name="ck_vendor_metric_ingestion_runs_error_category",
+        ),
+        sqlalchemy.Index(
+            "idx_vendor_metric_ingestion_runs_scope_started",
+            "user_id",
+            "vendor",
+            "identifier",
+            "started_at",
+        ),
+    )
+
+    def complete(
+        self,
+        *,
+        status: str,
+        completed_at: datetime,
+        records_received: int = 0,
+        records_stored: int = 0,
+        source_period_start=None,
+        source_period_end=None,
+        error_category: str | None = None,
+    ):
+        if self.status != INGESTION_RUN_RUNNING_STATUS:
+            raise ValueError("Only running ingestion runs can be completed")
+        if status not in INGESTION_RUN_TERMINAL_STATUSES:
+            raise ValueError(f"Invalid terminal ingestion status: {status}")
+        if error_category and error_category not in INGESTION_RUN_ERROR_CATEGORIES:
+            raise ValueError(f"Invalid ingestion error category: {error_category}")
+        if records_received < 0 or records_stored < 0:
+            raise ValueError("Ingestion record counts cannot be negative")
+
+        self.status = status
+        self.completed_at = completed_at
+        self.records_received = records_received
+        self.records_stored = records_stored
+        self.source_period_start = source_period_start
+        self.source_period_end = source_period_end
+        self.error_category = error_category
+        self.updated_at = completed_at

@@ -19,6 +19,7 @@ def configure_query(mock_db, config):
 
 def configured_service(mock_db, client):
     config = Mock(spec=AWSAPIConfiguration)
+    config.role_arn = None
     config.aws_access_key_id = "aws-access-key-secret"
     config.aws_secret_access_key = "aws-secret-key-secret"
     configure_query(mock_db, config)

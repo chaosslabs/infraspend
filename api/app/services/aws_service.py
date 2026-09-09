@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config
+from botocore.credentials import DeferredRefreshableCredentials
+from botocore.session import get_session
 from ..helpers.secrets_service import SecretsService
 from sqlalchemy.orm import Session
 from app.models import AWSAPIConfiguration
@@ -17,7 +20,6 @@ class AWSService:
         self.user_id = user_id
         self.db = db
         self.identifier = identifier
-        self.secrets = SecretsService()
         self._init_client()
 
     def _init_client(self):
@@ -33,6 +35,13 @@ class AWSService:
                 f"No AWS configuration found for this user with identifier {self.identifier}"
             )
 
+        if config.role_arn:
+            if not config.external_id:
+                raise ValueError("AWS role configuration has no external ID")
+            self.client = role_client(config.role_arn, config.external_id, self.user_id)
+            return
+
+        self.secrets = SecretsService()
         access_key = self.secrets.get_customer_secret(config.aws_access_key_id)
         secret_key = self.secrets.get_customer_secret(config.aws_secret_access_key)
 
@@ -115,3 +124,35 @@ class AWSService:
         except Exception as e:
             logger.error(f"Error fetching AWS costs: {str(e)}")
             raise Exception(f"Failed to retrieve AWS costs: {str(e)}")
+
+
+def role_client(role_arn, external_id, user_id):
+    """Use workload credentials and refresh customer sessions before they expire."""
+    options = Config(
+        retries={"mode": "standard", "max_attempts": 4},
+        connect_timeout=5,
+        read_timeout=30,
+    )
+    sts = boto3.client("sts", region_name="us-east-1", config=options)
+
+    def refresh():
+        credentials = sts.assume_role(
+            RoleArn=role_arn,
+            ExternalId=external_id,
+            RoleSessionName=f"infraspend-{user_id}",
+            DurationSeconds=3600,
+        )["Credentials"]
+        return {
+            "access_key": credentials["AccessKeyId"],
+            "secret_key": credentials["SecretAccessKey"],
+            "token": credentials["SessionToken"],
+            "expiry_time": credentials["Expiration"].isoformat(),
+        }
+
+    session = get_session()
+    session._credentials = DeferredRefreshableCredentials(
+        refresh_using=refresh, method="sts-assume-role"
+    )
+    return boto3.Session(botocore_session=session).client(
+        "ce", region_name="us-east-1", config=options
+    )

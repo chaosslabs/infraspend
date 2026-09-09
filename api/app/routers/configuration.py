@@ -1,4 +1,9 @@
 import logging
+import os
+import re
+import uuid
+from datetime import date, timedelta
+from app.services.aws_service import role_client
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -32,8 +37,9 @@ class DatadogConfig(BaseModel):
 
 
 class AWSConfig(BaseModel):
-    aws_access_key_id: str
-    aws_secret_access_key: str
+    role_arn: constr(
+        regex=r"^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/\-]+$", max_length=2048
+    )
     identifier: str = "Default Configuration"
 
 
@@ -83,22 +89,85 @@ async def configure_aws(
     user: User = Depends(get_user),
     db: Session = Depends(get_db),
 ) -> APIConfigResponse:
-    secrets_data = {
-        "AWS_ACCESS_KEY_ID": config.aws_access_key_id,
-        "AWS_SECRET_ACCESS_KEY": config.aws_secret_access_key,
-    }
-
-    config_service = ConfigurationService(db, user)
+    if not user.aws_external_id:
+        raise HTTPException(400, "Generate the AWS trust policy first")
     try:
-        config_id, message = config_service.configure_vendor(
-            "aws", secrets_data, config.identifier
+        client = role_client(config.role_arn, user.aws_external_id, user.id)
+        today = date.today()
+        client.get_cost_and_usage(
+            TimePeriod={
+                "Start": (today - timedelta(days=2)).isoformat(),
+                "End": today.isoformat(),
+            },
+            Granularity="MONTHLY",
+            Metrics=["UnblendedCost"],
         )
-
-        return APIConfigResponse(id=config_id, type="aws", message=message)
-    except Exception as e:
+    except Exception:
+        logger.warning("AWS role validation failed for user %s", user.id)
         raise HTTPException(
-            status_code=500, detail=f"Failed to configure AWS: {str(e)}"
+            400,
+            "Unable to read AWS costs. Check the role trust policy, external ID, and Cost Explorer permissions.",
         )
+    existing = (
+        db.query(AWSAPIConfiguration)
+        .filter(
+            AWSAPIConfiguration.user_id == user.id,
+            AWSAPIConfiguration.identifier == config.identifier,
+        )
+        .first()
+    )
+    if existing is None:
+        existing = AWSAPIConfiguration(user_id=user.id, identifier=config.identifier)
+        db.add(existing)
+    existing.role_arn = config.role_arn
+    existing.external_id = user.aws_external_id
+    existing.aws_access_key_id = None
+    existing.aws_secret_access_key = None
+    try:
+        db.commit()
+        db.refresh(existing)
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "Unable to save AWS configuration")
+    return APIConfigResponse(
+        id=existing.id, type="aws", message="AWS role connected successfully"
+    )
+
+
+@router.post("/aws/setup")
+async def aws_setup(user: User = Depends(get_user), db: Session = Depends(get_db)):
+    principal = os.environ.get("AWS_INFRASPEND_ROLE_ARN")
+    if not principal or not re.fullmatch(
+        r"arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/\-]+", principal
+    ):
+        raise HTTPException(503, "AWS integration is not configured by the operator")
+    # Lock the tenant row so concurrent onboarding requests get the same ID.
+    user = db.query(User).filter(User.id == user.id).with_for_update().one()
+    if not user.aws_external_id:
+        user.aws_external_id = str(uuid.uuid4())
+        db.commit()
+    return {
+        "external_id": user.aws_external_id,
+        "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": principal},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {
+                        "StringEquals": {"sts:ExternalId": user.aws_external_id}
+                    },
+                }
+            ],
+        },
+        "permissions_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": "ce:GetCostAndUsage", "Resource": "*"}
+            ],
+        },
+    }
 
 
 @router.post("/heroku")

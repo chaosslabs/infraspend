@@ -1,3 +1,5 @@
+from app.models import AI_CONFIG_MODELS, VendorMetrics
+from app.services.ai_cost_service import AICostService
 import logging
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, Response
@@ -48,7 +50,48 @@ async def get_vendor_forecast(
             )
 
         vendor_name = vendor_name.lower()
-        if vendor_name == "datadog":
+        manual_records = None
+        if vendor_name in AI_CONFIG_MODELS:
+            model = AI_CONFIG_MODELS[vendor_name]
+            config = (
+                db.query(model)
+                .filter(model.user_id == user.id, model.identifier == identifier)
+                .first()
+            )
+            if config is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "code": "CONFIG_NOT_FOUND",
+                        "message": "Billing configuration not found",
+                    },
+                )
+            if vendor_name in ("openai", "anthropic"):
+                service = AICostService(user.id, db, identifier, vendor_name)
+            else:
+                rows = (
+                    db.query(VendorMetrics)
+                    .filter(
+                        VendorMetrics.user_id == user.id,
+                        VendorMetrics.vendor == vendor_name,
+                        VendorMetrics.identifier == identifier,
+                    )
+                    .all()
+                )
+                manual_records = {
+                    "data": [
+                        {
+                            "month": row.month,
+                            "cost": row.cost,
+                            "provider": vendor_name,
+                            "period_start": row.source_period_start,
+                            "period_end": row.source_period_end,
+                            "currency": row.provider_currency,
+                        }
+                        for row in rows
+                    ]
+                }
+        elif vendor_name == "datadog":
             datadog_config = (
                 db.query(DatadogAPIConfiguration)
                 .filter(DatadogAPIConfiguration.user_id == user.id)
@@ -124,7 +167,11 @@ async def get_vendor_forecast(
                 },
             )
 
-        historical_data = service.get_monthly_costs()
+        historical_data = (
+            manual_records
+            if manual_records is not None
+            else service.get_monthly_costs()
+        )
         if isinstance(historical_data, JSONResponse):
             return historical_data
 

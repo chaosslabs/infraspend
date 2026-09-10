@@ -15,8 +15,8 @@ import InfraSpendLogo from "components/logo/InfraSpendLogo";
 const DEMO_SIGNALS = [
   {
     label: "Linked sources",
-    value: "3",
-    detail: "AWS, Datadog, Heroku",
+    value: "7",
+    detail: "Cloud and AI spending",
   },
   {
     label: "Sample window",
@@ -33,7 +33,7 @@ const DEMO_SIGNALS = [
 const FEATURE_CARDS = [
   {
     title: "Linked accounts",
-    detail: "The authenticated app configures AWS, Datadog, and Heroku sources.",
+    detail: "Connect cloud and AI billing APIs or enter Claude and ChatGPT subscription costs.",
     icon: <MdManageAccounts className="h-5 w-5" aria-hidden="true" />,
   },
   {
@@ -161,7 +161,7 @@ const DemoDashboard = () => {
               </p>
             </div>
             <span className="text-sm font-semibold text-brand-600 dark:text-teal-200">
-              AWS / Datadog / Heroku
+              Cloud / AI APIs / Subscriptions
             </span>
           </div>
           <div className="grid gap-5 2xl:grid-cols-2">
@@ -183,6 +183,10 @@ const DemoDashboard = () => {
               title="Heroku cost evidence"
               demo={true}
             />
+            <VendorMetrics vendor="anthropic" demo title="Claude API cost evidence" />
+            <VendorMetrics vendor="openai" demo title="OpenAI API cost evidence" />
+            <VendorMetrics vendor="claude" demo title="Claude subscription costs" />
+            <VendorMetrics vendor="chatgpt" demo title="ChatGPT subscription costs" />
           </div>
         </section>
       </main>

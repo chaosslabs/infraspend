@@ -1,3 +1,4 @@
+from app.models import AI_CONFIG_MODELS
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security.api_key import APIKeyHeader
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/vendors-metrics", tags=["vendors"])
 
 VENDOR_CONFIG_MODELS = {
+    **AI_CONFIG_MODELS,
     "aws": AWSAPIConfiguration,
     "datadog": DatadogAPIConfiguration,
     "heroku": HerokuAPIConfiguration,

@@ -1,3 +1,4 @@
+import { MdSmartToy } from "react-icons/md";
 /// <reference types="react" />
 /// <reference types="node" />
 
@@ -62,7 +63,7 @@ interface ForecastData {
 }
 
 interface VendorMetricsProps {
-  vendor: "datadog" | "aws" | "heroku";
+  vendor: "datadog" | "aws" | "heroku" | "openai" | "anthropic" | "claude" | "chatgpt";
   title: string;
   demo?: boolean;
   identifier?: string;
@@ -87,6 +88,10 @@ const VENDOR_DEMO_MULTIPLIERS: Record<
 > = {
   aws: [0.86, 0.9, 0.96, 1.02, 1.08, 1.14],
   datadog: [0.91, 0.95, 0.93, 0.99, 1.01, 1.05],
+  openai: [0.6, 0.7, 0.8, 0.9, 1, 1.1],
+  anthropic: [0.5, 0.6, 0.8, 0.9, 1, 1.2],
+  claude: [1, 1, 1, 1, 1, 1],
+  chatgpt: [1, 1, 1, 1, 1, 1],
   heroku: [0.78, 0.83, 0.9, 0.96, 1.01, 1.08],
 };
 
@@ -96,6 +101,10 @@ const VENDOR_GROWTH_RATES: Record<
 > = {
   aws: { best_case: 8, trend_based: 13, worst_case: 22 },
   datadog: { best_case: 3, trend_based: 7, worst_case: 12 },
+  openai: { best_case: 5, trend_based: 10, worst_case: 20 },
+  anthropic: { best_case: 5, trend_based: 10, worst_case: 20 },
+  claude: { best_case: 0, trend_based: 0, worst_case: 0 },
+  chatgpt: { best_case: 0, trend_based: 0, worst_case: 0 },
   heroku: { best_case: 5, trend_based: 9, worst_case: 15 },
 };
 
@@ -119,6 +128,30 @@ const VENDOR_THEME: Record<
     iconClass: "text-brand-600 dark:text-teal-200",
     iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
     chartColor: "#0B63B6",
+  },
+  openai: {
+    accentClass: "text-brand-600 dark:text-teal-200",
+    iconClass: "text-brand-600 dark:text-teal-200",
+    iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
+    chartColor: "#10a37f",
+  },
+  anthropic: {
+    accentClass: "text-brand-600 dark:text-teal-200",
+    iconClass: "text-brand-600 dark:text-teal-200",
+    iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
+    chartColor: "#c17b58",
+  },
+  claude: {
+    accentClass: "text-brand-600 dark:text-teal-200",
+    iconClass: "text-brand-600 dark:text-teal-200",
+    iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
+    chartColor: "#c17b58",
+  },
+  chatgpt: {
+    accentClass: "text-brand-600 dark:text-teal-200",
+    iconClass: "text-brand-600 dark:text-teal-200",
+    iconWrapClass: "bg-brand-50 ring-brand-100 dark:bg-brand-500/10 dark:ring-brand-400/20",
+    chartColor: "#10a37f",
   },
   heroku: {
     accentClass: "text-teal-600 dark:text-teal-200",
@@ -144,18 +177,25 @@ const formatPercent = (value: number) =>
   `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 
 const getVendorBaseAmount = (vendor: VendorMetricsProps["vendor"]) => {
+  if (vendor === "claude" || vendor === "chatgpt") return 20;
+  if (vendor === "openai" || vendor === "anthropic") return 500;
   if (vendor === "datadog") return 2200;
   if (vendor === "heroku") return 980;
   return 15600;
 };
 
 const getVendorIcon = (vendor: VendorMetricsProps["vendor"]) => {
+  if (["openai", "anthropic", "claude", "chatgpt"].includes(vendor)) return MdSmartToy;
   if (vendor === "datadog") return DatadogIcon;
   if (vendor === "heroku") return HerokuIcon;
   return AWSIcon;
 };
 
 const getVendorLabel = (vendor: VendorMetricsProps["vendor"]) => {
+  if (vendor === "openai") return "OpenAI API";
+  if (vendor === "anthropic") return "Claude API";
+  if (vendor === "chatgpt") return "ChatGPT subscription";
+  if (vendor === "claude") return "Claude subscription";
   if (vendor === "aws") return "AWS";
   return vendor.charAt(0).toUpperCase() + vendor.slice(1);
 };
@@ -213,6 +253,7 @@ const generateDemoMetrics = (
 
   return {
     ...health,
+    ...(vendor === "claude" || vendor === "chatgpt" ? { source_kind: "manual_subscription" as const } : {}),
     data,
   };
 };
@@ -319,7 +360,7 @@ const SummaryMetrics: React.FC<{
         value={`${metrics.record_count ?? data.length}`}
         caption={
           metrics.data_through
-            ? `complete through ${formatMonth(metrics.data_through)}`
+            ? `latest record ${formatMonth(metrics.data_through)}`
             : "reported by source"
         }
       />
@@ -742,7 +783,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({
               Cost evidence
             </h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Observed spend, freshness, and forecast envelope for this source.
+              {vendor === "claude" || vendor === "chatgpt" ? "User-entered monthly subscription totals in USD. Missing months are unknown." : "Observed spend, freshness, and forecast envelope for this source."}
             </p>
           </div>
 
@@ -783,7 +824,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({
             ) : null}
 
             <Link
-              to={demo ? "/auth/sign-in" : `/admin/vendors/${vendor}`}
+              to={demo ? "/auth/sign-in" : `/admin/vendors/${vendor}?identifier=${encodeURIComponent(configurationIdentifier)}`}
               className="inline-flex items-center gap-2 rounded-md bg-brand-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
             >
               {demo ? "Connect source" : "Details"}

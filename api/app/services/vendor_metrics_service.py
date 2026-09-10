@@ -1,3 +1,5 @@
+from app.models import AI_CONFIG_MODELS
+from app.services.ai_cost_service import AICostService
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.models import (
@@ -22,7 +24,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_VENDORS = {"aws", "datadog", "heroku"}
+SUPPORTED_VENDORS = {"aws", "datadog", "heroku", *AI_CONFIG_MODELS}
 
 # Freshness threshold used by the dashboard to decide when a last-successful
 # ingestion is "stale". Documented and configurable rather than hidden in UI
@@ -108,6 +110,8 @@ class VendorMetricsService:
                     ("aws", "AWS", AWSAPIConfiguration),
                     ("datadog", "Datadog", DatadogAPIConfiguration),
                     ("heroku", "Heroku", HerokuAPIConfiguration),
+                    ("openai", "OpenAI", AI_CONFIG_MODELS["openai"]),
+                    ("anthropic", "Anthropic", AI_CONFIG_MODELS["anthropic"]),
                 ]
 
                 for vendor, label, config_model in vendors:
@@ -151,6 +155,15 @@ class VendorMetricsService:
         try:
             if vendor not in SUPPORTED_VENDORS:
                 raise ValueError(f"Unsupported vendor: {vendor}")
+
+            if vendor in ("claude", "chatgpt"):
+                self._ensure_configuration_exists(
+                    AI_CONFIG_MODELS[vendor], vendor, identifier
+                )
+                return {
+                    **self._build_metrics_response(vendor, identifier),
+                    "source_kind": "manual_subscription",
+                }
 
             stored_metrics = self._get_stored_metrics(vendor, identifier)
             had_cache = len(stored_metrics) > 0
@@ -326,6 +339,13 @@ class VendorMetricsService:
         end_date: str | None = None,
     ):
         """Get costs from the appropriate vendor service"""
+        if vendor in ("openai", "anthropic"):
+            self._ensure_configuration_exists(
+                AI_CONFIG_MODELS[vendor], vendor, identifier
+            )
+            return AICostService(
+                self.user_id, self.db, identifier, vendor
+            ).get_monthly_costs(start_date, end_date)
         if vendor == "datadog":
             self._ensure_configuration_exists(
                 DatadogAPIConfiguration, "Datadog", identifier
@@ -459,7 +479,8 @@ class VendorMetricsService:
         data = [
             _serialize_metric(metric)
             for metric in all_metrics
-            if datetime.strptime(metric.month, "%m-%Y").year > datetime.now().year - 2
+            if vendor in ("claude", "chatgpt")
+            or datetime.strptime(metric.month, "%m-%Y").year > datetime.now().year - 2
         ]
 
         latest_attempt = self._latest_ingestion_run(vendor, identifier)

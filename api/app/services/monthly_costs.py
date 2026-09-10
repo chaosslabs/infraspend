@@ -5,8 +5,18 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Literal, Mapping, TypedDict, cast
 
 
-ProviderName = Literal["aws", "datadog", "heroku"]
-ALLOWED_PROVIDERS: set[str] = {"aws", "datadog", "heroku"}
+ProviderName = Literal[
+    "aws", "datadog", "heroku", "openai", "anthropic", "claude", "chatgpt"
+]
+ALLOWED_PROVIDERS: set[str] = {
+    "aws",
+    "datadog",
+    "heroku",
+    "openai",
+    "anthropic",
+    "claude",
+    "chatgpt",
+}
 
 
 class MonthlyCostRecord(TypedDict):

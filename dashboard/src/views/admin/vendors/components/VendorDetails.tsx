@@ -1,8 +1,9 @@
+import { MdSmartToy } from "react-icons/md";
 import Card from "components/card";
 import React, { useEffect, useState, useCallback } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
-import { useParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useParams, useNavigate } from "react-router-dom";
 import { DatadogIcon, AWSIcon, HerokuIcon } from "components/icons";
 import { useBudgetPlans, BudgetEntry } from '../hooks/useBudgetPlans';
 
@@ -41,11 +42,16 @@ interface VendorDetailsState {
 
 const getVendorIcon = (vendor?: string) => {
   if (vendor === "datadog") return DatadogIcon;
+  if (["openai", "anthropic", "claude", "chatgpt"].includes(vendor)) return MdSmartToy;
   if (vendor === "heroku") return HerokuIcon;
   return AWSIcon;
 };
 
 const getVendorLabel = (vendor?: string) => {
+  if (vendor === "openai") return "OpenAI API";
+  if (vendor === "anthropic") return "Claude API";
+  if (vendor === "chatgpt") return "ChatGPT subscription";
+  if (vendor === "claude") return "Claude subscription";
   if (vendor === "aws") return "AWS";
   if (!vendor) return "";
   return vendor.charAt(0).toUpperCase() + vendor.slice(1);
@@ -53,6 +59,8 @@ const getVendorLabel = (vendor?: string) => {
 
 const VendorDetails: React.FC = () => {
   const { vendor } = useParams<{ vendor: string }>();
+  const [searchParams] = useSearchParams();
+  const identifier = searchParams.get("identifier") || "Default Configuration";
   const navigate = useNavigate();
   const { getAccessTokenSilently } = useAuth0();
   const [state, setState] = useState<VendorDetailsState>({
@@ -77,7 +85,7 @@ const VendorDetails: React.FC = () => {
   const fetchMetrics = useCallback(async () => {
     try {
       const response = await CallBackendService(
-        `/v1/vendors-metrics/${vendor}`,
+        `/v1/vendors-metrics/${vendor}?identifier=${encodeURIComponent(identifier)}`,
         getAccessTokenSilently
       );
       setMetrics(response.data || []);
@@ -92,13 +100,13 @@ const VendorDetails: React.FC = () => {
         loading: false
       }));
     }
-  }, [vendor, getAccessTokenSilently]);
+  }, [vendor, identifier, getAccessTokenSilently]);
 
   const fetchForecastData = useCallback(async () => {
     try {
       setForecastLoading(true);
       const response = await CallBackendService(
-        `/v1/vendors-forecast/${vendor}`,
+        `/v1/vendors-forecast/${vendor}?identifier=${encodeURIComponent(identifier)}`,
         getAccessTokenSilently
       );
       setForecastData(response);
@@ -114,7 +122,7 @@ const VendorDetails: React.FC = () => {
     } finally {
       setForecastLoading(false);
     }
-  }, [vendor, getAccessTokenSilently]);
+  }, [vendor, identifier, getAccessTokenSilently]);
 
   useEffect(() => {
     fetchMetrics();
@@ -277,6 +285,7 @@ const VendorDetails: React.FC = () => {
           <h2 className="ml-4 text-2xl font-bold text-navy-700 dark:text-white">
             {vendorLabel} Details
           </h2>
+          {(vendor === "claude" || vendor === "chatgpt") && <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Manual subscription entries in USD; no automatic billing sync.</p>}
         </div>
         <button
           onClick={() => navigate(-1)}

@@ -112,7 +112,7 @@ def test_create_vendor_metric_ingestion_runs_table_registered(monkeypatch):
     migration.upgrade()
 
     sql = captured_sql(fake_engine)
-    assert MIGRATIONS[-1] is migration.upgrade
+    assert migration.upgrade in MIGRATIONS
     assert "CREATE TABLE IF NOT EXISTS vendor_metric_ingestion_runs" in sql
     assert "user_id INTEGER NOT NULL REFERENCES users(id)" in sql
     assert "vendor VARCHAR NOT NULL" in sql

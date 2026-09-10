@@ -12,7 +12,13 @@ from app.routers.models import APIConfigResponse
 from app.helpers.database import get_db
 from app.helpers.auth import get_authenticated_user
 from app.services.configuration_service import ConfigurationService
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, constr, condecimal, validator
+from typing import Literal
+from datetime import datetime
+from hashlib import sha256
+from app.models import AI_CONFIG_MODELS, VendorMetrics
+from app.services.monthly_costs import add_month
+from app.helpers.secrets_service import SecretsService
 
 router = APIRouter(prefix="/v1/configuration", tags=["configuration"])
 
@@ -173,4 +179,126 @@ async def list_api_configurations(
             }
         )
 
+    for vendor, model in AI_CONFIG_MODELS.items():
+        for config in db.query(model).filter(model.user_id == user.id).all():
+            configurations.append(
+                {
+                    "id": config.id,
+                    "type": vendor,
+                    "identifier": config.identifier,
+                    "created_at": config.created_at,
+                    "updated_at": config.updated_at,
+                }
+            )
     return {"data": configurations}
+
+
+class AIConfig(BaseModel):
+    api_key: constr(strip_whitespace=True, min_length=1)
+    identifier: constr(strip_whitespace=True, min_length=1, max_length=200) = (
+        "Default Configuration"
+    )
+
+
+class SubscriptionCharge(BaseModel):
+    identifier: constr(strip_whitespace=True, min_length=1, max_length=200) = (
+        "Default Configuration"
+    )
+    month: str = Field(..., regex=r"^(0[1-9]|1[0-2])-\d{4}$")
+    cost: condecimal(ge=0, max_digits=12, decimal_places=2)
+    currency: Literal["USD"] = "USD"
+
+    @validator("month")
+    def validate_month(cls, value: str) -> str:
+        parsed = datetime.strptime(value, "%m-%Y")
+        if parsed.date() > datetime.utcnow().date().replace(day=1):
+            raise ValueError("Enter a charge for the current or a past month")
+        return value
+
+
+@router.post("/ai/{vendor}")
+async def configure_ai(
+    vendor: Literal["openai", "anthropic"],
+    config: AIConfig,
+    user: User = Depends(get_user),
+    db: Session = Depends(get_db),
+) -> APIConfigResponse:
+    model = AI_CONFIG_MODELS[vendor]
+    try:
+        # Stable, distinct secret names for each user, vendor and account.
+        scope = sha256(f"{user.sub}:{vendor}:{config.identifier}".encode()).hexdigest()
+        secret_id = SecretsService().create_customer_secret(
+            f"ai_{scope}", config.api_key, vendor
+        )
+        existing = (
+            db.query(model)
+            .filter(model.user_id == user.id, model.identifier == config.identifier)
+            .first()
+        )
+        if existing is None:
+            existing = model(user_id=user.id, identifier=config.identifier, type=vendor)
+            db.add(existing)
+        existing.api_key = secret_id
+        db.commit()
+        return APIConfigResponse(
+            id=existing.id, type=vendor, message="API billing credentials saved"
+        )
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Unable to save API billing credentials"
+        ) from None
+
+
+@router.post("/subscriptions/{vendor}")
+async def save_subscription_charge(
+    vendor: Literal["claude", "chatgpt"],
+    charge: SubscriptionCharge,
+    user: User = Depends(get_user),
+    db: Session = Depends(get_db),
+) -> APIConfigResponse:
+    model = AI_CONFIG_MODELS[vendor]
+    try:
+        config = (
+            db.query(model)
+            .filter(model.user_id == user.id, model.identifier == charge.identifier)
+            .first()
+        )
+        if config is None:
+            config = model(user_id=user.id, identifier=charge.identifier, type=vendor)
+            db.add(config)
+        config.updated_at = datetime.utcnow()
+        metric = (
+            db.query(VendorMetrics)
+            .filter(
+                VendorMetrics.user_id == user.id,
+                VendorMetrics.vendor == vendor,
+                VendorMetrics.identifier == charge.identifier,
+                VendorMetrics.month == charge.month,
+            )
+            .first()
+        )
+        if metric is None:
+            metric = VendorMetrics(
+                user_id=user.id,
+                vendor=vendor,
+                identifier=charge.identifier,
+                month=charge.month,
+            )
+            db.add(metric)
+        month = datetime.strptime(charge.month, "%m-%Y").date()
+        metric.cost = float(charge.cost)
+        metric.source_provider = vendor
+        metric.source_period_start = month
+        metric.source_period_end = add_month(month)
+        metric.provider_currency = charge.currency
+        metric.updated_at = datetime.utcnow()
+        db.commit()
+        return APIConfigResponse(
+            id=config.id, type=vendor, message="Monthly subscription charge saved"
+        )
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Unable to save subscription charge"
+        ) from None

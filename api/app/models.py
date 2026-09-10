@@ -216,3 +216,49 @@ class VendorMetricIngestionRun(Base):
         self.source_period_end = source_period_end
         self.error_category = error_category
         self.updated_at = completed_at
+
+
+class OpenAIAPIConfiguration(APIConfiguration):
+    __tablename__ = "openai_configurations"
+    api_key = Column(String, nullable=False)
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "identifier", name="uq_openai_user_identifier"
+        ),
+    )
+
+
+class AnthropicAPIConfiguration(APIConfiguration):
+    __tablename__ = "anthropic_configurations"
+    api_key = Column(String, nullable=False)
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "identifier", name="uq_anthropic_user_identifier"
+        ),
+    )
+
+
+class ClaudeSubscriptionConfiguration(APIConfiguration):
+    __tablename__ = "claude_configurations"
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "identifier", name="uq_claude_user_identifier"
+        ),
+    )
+
+
+class ChatGPTSubscriptionConfiguration(APIConfiguration):
+    __tablename__ = "chatgpt_configurations"
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "identifier", name="uq_chatgpt_user_identifier"
+        ),
+    )
+
+
+AI_CONFIG_MODELS = {
+    "openai": OpenAIAPIConfiguration,
+    "anthropic": AnthropicAPIConfiguration,
+    "claude": ClaudeSubscriptionConfiguration,
+    "chatgpt": ChatGPTSubscriptionConfiguration,
+}

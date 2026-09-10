@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   MdHelpOutline,
@@ -12,6 +12,9 @@ import {
 import { SiDatadog, SiAmazonaws, SiHeroku } from "react-icons/si";
 import InfraSpendLogo from "components/logo/InfraSpendLogo";
 import { trackPageView, trackEvent } from "../../utils/gtm";
+
+import { authConfigured } from "auth/Provider";
+import { safeReturnTo } from "auth/navigation";
 
 const FEATURE_CARDS = [
   {
@@ -32,20 +35,34 @@ const FEATURE_CARDS = [
 ];
 
 export default function SignIn() {
-  const { loginWithRedirect } = useAuth0();
+  const { loginWithRedirect, isAuthenticated, isLoading, error } = useAuth0();
+  const location = useLocation();
+  const returnTo = safeReturnTo(location.state?.returnTo);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     trackPageView("/", "Sign In");
   }, []);
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
+    if (pending) return;
+    setPending(true);
+    setFailed(false);
     trackEvent("auth", "sign_in_click");
-    loginWithRedirect();
+    try {
+      await loginWithRedirect({ appState: { returnTo } });
+    } catch {
+      setFailed(true);
+      setPending(false);
+    }
   };
 
   const handleDemoClick = () => {
     trackEvent("demo", "demo_dashboard_click");
   };
+
+  if (isAuthenticated && !error) return <Navigate to={returnTo} replace />;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1180px] flex-col justify-center gap-8 px-5 py-12">
@@ -64,13 +81,18 @@ export default function SignIn() {
             focused workspace.
           </p>
 
+          <p className="mt-6 text-sm text-gray-300">Sign in securely to continue to your workspace.</p>
+          {!authConfigured && <p role="alert" className="mt-3 text-sm text-amber-200">Sign-in is not configured yet. You can explore the demo while setup is completed.</p>}
+          {authConfigured && (failed || error) && <p role="alert" className="mt-3 text-sm text-amber-200">We couldn’t complete sign-in. Please try again.</p>}
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <button
               onClick={handleSignIn}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-500 px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-brand-600"
+              disabled={!authConfigured || isLoading || pending}
+              aria-busy={pending}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-500 px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-200"
             >
               <MdLogin className="h-5 w-5" aria-hidden="true" />
-              Sign in
+              {pending ? "Opening secure sign-in…" : authConfigured && isLoading ? "Checking your session…" : "Sign in"}
             </button>
             <Link
               to="/demo"

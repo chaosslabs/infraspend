@@ -1,3 +1,4 @@
+import { OpenAIConfig, AnthropicConfig, ClaudeConfig, ChatGPTConfig, BillingConfigProps } from "./AIBillingConfig";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -23,7 +24,7 @@ interface VendorConfig {
   description: string;
   credentials: string;
   evidence: string;
-  component: React.ComponentType<any>;
+  component: React.ComponentType<BillingConfigProps>;
   icon: JSX.Element;
 }
 
@@ -56,6 +57,30 @@ const VENDOR_CONFIGS: VendorConfig[] = [
     credentials: "API key and optional team name",
     evidence: "Invoice-backed costs, freshness, and budget planning",
     component: HerokuConfig,
+    icon: <MdKey className="h-6 w-6" aria-hidden="true" />,
+  },
+  {
+    id: "openai", type: "openai", name: "OpenAI API",
+    description: "Organization API spending for GPT and other OpenAI services.", credentials: "Organization admin API key",
+    evidence: "Provider-reported API costs and forecasts", component: OpenAIConfig,
+    icon: <MdKey className="h-6 w-6" aria-hidden="true" />,
+  },
+  {
+    id: "anthropic", type: "anthropic", name: "Claude API (Anthropic)",
+    description: "Organization API spending from Claude Console.", credentials: "Organization admin API key",
+    evidence: "Provider-reported costs; excludes Priority Tier", component: AnthropicConfig,
+    icon: <MdKey className="h-6 w-6" aria-hidden="true" />,
+  },
+  {
+    id: "claude", type: "claude", name: "Claude subscription",
+    description: "Monthly Claude subscription charges from your bills.", credentials: "Manual monthly total in USD",
+    evidence: "User-entered subscription costs and forecasts", component: ClaudeConfig,
+    icon: <MdKey className="h-6 w-6" aria-hidden="true" />,
+  },
+  {
+    id: "chatgpt", type: "chatgpt", name: "ChatGPT subscription",
+    description: "Monthly ChatGPT subscription charges from your bills.", credentials: "Manual monthly total in USD",
+    evidence: "User-entered subscription costs and forecasts", component: ChatGPTConfig,
     icon: <MdKey className="h-6 w-6" aria-hidden="true" />,
   },
 ];
@@ -128,7 +153,7 @@ const APIConfig = () => {
               Source setup
             </p>
             <h2 className="mt-3 max-w-3xl text-2xl font-bold leading-tight text-navy-700 dark:text-white">
-              Connect read-only billing sources and keep their evidence visible.
+              Connect billing APIs or record monthly subscription costs.
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-700 dark:text-gray-300">
               Linked accounts feed the dashboard with cost records, source
@@ -358,7 +383,7 @@ const APIConfig = () => {
             <div className="mb-6 flex items-start justify-between gap-4 border-b border-gray-200 pb-5 dark:border-white/10">
               <div>
                 <p className="text-sm font-semibold uppercase text-brand-600 dark:text-teal-200">
-                  Source credentials
+                  Source setup
                 </p>
                 <h2
                   id="source-drawer-title"

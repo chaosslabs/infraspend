@@ -1,3 +1,4 @@
+from .create_ai_configurations import upgrade as create_ai_configurations
 from .create_users_table import upgrade as create_users_table
 from .create_api_configurations_table import upgrade as create_api_configurations_table
 from .create_vendor_configurations_tables import (
@@ -25,4 +26,5 @@ MIGRATIONS = [
     add_updated_at_to_vendor_metrics,  # Add the new migration
     add_lineage_to_vendor_metrics,
     create_vendor_metric_ingestion_runs_table,
+    create_ai_configurations,
 ]

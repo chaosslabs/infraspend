@@ -23,6 +23,7 @@ export type IngestionStatus = "success" | "partial" | "failed";
 // Additive freshness fields on the vendor-metrics response. All optional so the
 // dashboard stays compatible with API versions that do not yet return them.
 export interface SourceHealthFields {
+  source_kind?: "manual_subscription";
   last_success_at?: string | null; // ISO timestamp of last fully successful ingestion
   last_attempt_at?: string | null; // ISO timestamp of latest ingestion attempt
   last_attempt_status?: IngestionStatus | null;
@@ -81,6 +82,7 @@ export function deriveSourceHealth(
   now: number = Date.now()
 ): SourceHealthResult {
   const f = fields ?? {};
+  if (f.source_kind === "manual_subscription") return { state: "unknown", label: "Manual entry", detail: "User-entered subscription charges; no automatic billing sync" };
   const hasSignal =
     f.last_success_at != null ||
     f.last_attempt_at != null ||
@@ -189,11 +191,11 @@ export const SourceHealthBadge: React.FC<{ health: SourceHealthResult }> = ({
       role="status"
       aria-label={`Source data: ${health.label}, ${health.detail}`}
       title={`${health.label} · ${health.detail}`}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${className}`}
+      className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold ${className}`}
     >
-      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      <span>{health.label}</span>
-      <span className="font-normal opacity-80">· {health.detail}</span>
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="whitespace-nowrap">{health.label}</span>
+      <span className="min-w-0 whitespace-normal font-normal opacity-80">· {health.detail}</span>
     </span>
   );
 };

@@ -15,6 +15,37 @@ InfraSpend is an open-source FinOps dashboard designed to help organizations mon
 - ✅ **Datadog**: Full support for cost metrics and forecasting
 - ✅ **AWS**: Full support for cost metrics and forecasting
 - ✅ **Heroku**: Full support for invoice cost metrics and forecasting
+- ✅ **Claude / Anthropic API**: Organization cost reports and forecasting
+- ✅ **OpenAI API**: Organization API costs and forecasting
+- ✅ **Claude and ChatGPT subscriptions**: Manual monthly subscription totals and forecasting
+
+### Claude and ChatGPT billing setup
+
+Run the normal backend migrations (`cd api && python -m app.migrations.run_all`)
+before using the new sources. In **Integrations / Source setup**, choose:
+
+- **Claude API (Anthropic)**: Enter a Claude Console organization Admin API key.
+  InfraSpend reads the [Anthropic Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api),
+  follows pagination and converts cents to USD before aggregating monthly totals.
+  The endpoint excludes Priority Tier costs and is unavailable for individual accounts.
+- **OpenAI API**: Enter an organization Admin API key with permission to read
+  [organization costs](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs).
+  This imports API spending, not ChatGPT subscriptions; ordinary project inference keys are insufficient.
+- **Claude subscription / ChatGPT subscription**: Enter an account name, billing
+  month and actual monthly total from your bill in USD. Use Edit to add another
+  month or correct an existing total. Saving a month replaces that month's total
+  for that account; other months remain unchanged. Missing months stay unknown.
+  These sources show **Manual entry**, with no automatic subscription billing sync.
+  Non-USD subscription bills and automatic enterprise subscription imports are not supported.
+
+API credentials use the existing Infisical customer-secrets integration, with
+separate secret references for each account. No new environment variables are
+required. Reports retain provider and source-period metadata; the current month's
+API total includes completed UTC days and may lag provider billing. Empty or failed reports
+are not converted into invented zero-cost months. API sources participate in the
+existing refresh job, cache/failure indicators, forecasts and budget views.
+Forecasts require at least two recorded months; they are estimates, not bills.
+The demo includes illustrative AI costs, not live account data.
 
 ## Getting Started
 

@@ -16,13 +16,17 @@ const VENDOR_TITLES: Record<string, string> = {
   datadog: "Datadog cost evidence",
   aws: "AWS cost evidence",
   heroku: "Heroku cost evidence",
+  openai: "OpenAI API cost evidence",
+  anthropic: "Claude API cost evidence",
+  claude: "Claude subscription costs",
+  chatgpt: "ChatGPT subscription costs",
 };
 
 const PRODUCT_SIGNALS = [
   {
     label: "Linked accounts",
     value: "Configured",
-    detail: "AWS, Datadog, and Heroku sources",
+    detail: "Cloud, AI API, and subscription sources",
     icon: <MdAccountTree className="h-5 w-5" aria-hidden="true" />,
   },
   {
@@ -216,7 +220,7 @@ const Dashboard = () => {
             <VendorMetrics
               key={`${config.type}-${config.id}`}
               identifier={config.identifier}
-              vendor={config.type as "datadog" | "aws" | "heroku"}
+              vendor={config.type as "datadog" | "aws" | "heroku" | "openai" | "anthropic" | "claude" | "chatgpt"}
               title={VENDOR_TITLES[config.type]}
             />
           ))}

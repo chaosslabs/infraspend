@@ -95,3 +95,28 @@ it("labels manual evidence", () => {
     "Manual entry"
   );
 });
+
+it("reports saved-charge loading failures and preserves the account identity", async () => {
+  backend.mockRejectedValue(new Error("network unavailable"));
+  render(
+    <ChatGPTConfig existingConfig lockIdentifier initialIdentifier="Finance" />
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Unable to load saved monthly charges"
+  );
+  expect(screen.getByLabelText("Account name")).toHaveValue("Finance");
+  expect(screen.getByLabelText("Monthly total (USD)")).toHaveValue(null);
+});
+
+it("can save without a completion callback", async () => {
+  backend.mockResolvedValue({});
+  render(<OpenAIConfig />);
+  fireEvent.change(screen.getByLabelText("Organization admin API key"), {
+    target: { value: "test-key" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save API credentials" }));
+  await waitFor(() =>
+    expect(screen.getByLabelText("Organization admin API key")).toHaveValue("")
+  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

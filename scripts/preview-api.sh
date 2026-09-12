@@ -21,10 +21,11 @@ fi
 if [[ -z "$existing" ]]; then
   railway environment new "$environment" --copy "$base" --json
 fi
-export RAILWAY_ENVIRONMENT_ID=$(railway environment list --json | jq -er --arg name "$environment" ' .environments[] | select(.name == $name) | .id')
+RAILWAY_ENVIRONMENT_ID=$(railway environment list --json | jq -er --arg name "$environment" '.environments[] | select(.name == $name) | .id')
+export RAILWAY_ENVIRONMENT_ID
 railway variable set --service api --skip-deploys "PREVIEW_COMMIT=$PREVIEW_COMMIT"
 domain_json=$(railway domain --service api --port 8000 --json)
-backend=$(jq -er '.domain' <<< "$domain_json")
+backend=$(jq -er '.domain // .domains[0]' <<< "$domain_json")
 [[ "$backend" == https://* ]] || backend="https://$backend"
 [[ "$backend" =~ ^https://[a-z0-9-]+\.up\.railway\.app$ ]] || { echo 'Invalid Railway domain'; exit 1; }
 railway up api --path-as-root --service api --environment "$environment" --ci

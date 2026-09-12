@@ -13,6 +13,13 @@ class ConfigurationService:
     def __init__(self, db: Session, user: User):
         self.db = db
         self.user = user
+        from app.helpers.sandbox import sandbox_enabled
+
+        if sandbox_enabled():
+            raise HTTPException(
+                status_code=403,
+                detail="Preview sandbox uses sample accounts; real credentials are disabled.",
+            )
         self.secrets = SecretsService()
 
     def _configure_datadog(

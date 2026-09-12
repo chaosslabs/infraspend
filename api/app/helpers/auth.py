@@ -112,6 +112,10 @@ async def get_authenticated_user(
             db.add(db_user)
             db.commit()
             db.refresh(db_user)
+            from app.helpers.sandbox import sandbox_enabled, seed_user
+
+            if sandbox_enabled():
+                seed_user(db, db_user.id)
 
         user = {
             "sub": sub,

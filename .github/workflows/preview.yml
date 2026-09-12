@@ -1,0 +1,84 @@
+name: PR Sandbox
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    # Fork PRs cannot receive deployment credentials.
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Check deployment credentials
+        run: |
+          test -n "$RAILWAY_API_TOKEN" || { echo "Missing RAILWAY_API_TOKEN repository secret"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - run: npm install --global @railway/cli@4.57.1
+      - name: Deploy matching API
+        id: api
+        run: bash scripts/preview-api.sh
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
+      - run: npm ci
+        working-directory: dashboard
+      - name: Build sandbox frontend
+        run: npm run build
+        working-directory: dashboard
+        env:
+          CI: 'false'
+          REACT_APP_PREVIEW_SANDBOX: 'true'
+          REACT_APP_BACKEND_URL: ${{ steps.api.outputs.backend_url }}
+          REACT_APP_AUTH0_DOMAIN: dev-wqfsrz7io4d38o2a.us.auth0.com
+          REACT_APP_AUTH0_CLIENT_ID: 8npwJJN7NIat9nVg2i7gffONKixWsV0Q
+          REACT_APP_AUTH0_AUDIENCE: https://api.infraspend.io
+      - name: Publish paired Pages preview
+        run: npx wrangler@4 pages deploy dashboard/build --project-name infraspend --branch "pr-$PR_NUMBER" --commit-hash "$PREVIEW_COMMIT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8b7b9d0fe58df1b2cec5b520ff92110c
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
+      - name: Preview link
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BACKEND_URL: ${{ steps.api.outputs.backend_url }}
+        run: |
+          printf 'Preview: https://pr-%s.infraspend.pages.dev\n\nAPI: %s\n' "$PR_NUMBER" "$BACKEND_URL" >> "$GITHUB_STEP_SUMMARY"
+  cleanup:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --global @railway/cli@4.57.1
+      - run: bash scripts/preview-api.sh cleanup
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

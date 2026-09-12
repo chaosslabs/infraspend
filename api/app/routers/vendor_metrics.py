@@ -32,6 +32,12 @@ VENDOR_CONFIG_MODELS = {
 
 
 def get_secrets_service() -> SecretsService:
+    from app.helpers.sandbox import sandbox_enabled
+
+    if sandbox_enabled():
+        raise HTTPException(
+            status_code=403, detail="Scheduled ingestion is disabled in previews"
+        )
     return SecretsService()
 
 

@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 import logging
+from app.helpers.sandbox import sandbox_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -9,9 +10,20 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://user:password@postgres:5432/dbname"
 )
 
-logger.info(f"Initializing database connection with URL: {DATABASE_URL}")
 
-engine = create_engine(DATABASE_URL, echo=True)  # This will log all SQL statements
+if sandbox_enabled():
+    DATABASE_URL = "sqlite:///" + os.getenv(
+        "PREVIEW_DB_PATH", "/tmp/infraspend-preview.db"
+    )
+
+logger.info("Initializing database connection")
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args=(
+        {"check_same_thread": False} if DATABASE_URL.startswith("sqlite:") else {}
+    ),
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

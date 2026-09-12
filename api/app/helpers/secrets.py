@@ -10,6 +10,13 @@ class Secrets:
     Auth0Audience: str
 
     def __init__(self):
+        from app.helpers.sandbox import sandbox_enabled, session_secret
+
+        if sandbox_enabled():
+            self.AppSecretKey = session_secret
+            self.Auth0Domain = os.environ["AUTH0_DOMAIN"]
+            self.Auth0Audience = os.environ["AUTH0_AUDIENCE"]
+            return
         secrets = SecretsService()
         self.AppSecretKey = secrets.get_secret(
             "APP_SECRET_KEY", os.getenv("APP_SECRET_KEY")

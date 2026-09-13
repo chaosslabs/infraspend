@@ -151,6 +151,12 @@ class VendorMetricsService:
     ):
         """Get vendor metrics and store them in the database"""
         vendor = vendor.lower()
+        from app.helpers.sandbox import sandbox_enabled
+
+        if sandbox_enabled():
+            if vendor not in SUPPORTED_VENDORS:
+                raise ValueError(f"Unsupported vendor: {vendor}")
+            return self._build_metrics_response(vendor, identifier)
 
         try:
             if vendor not in SUPPORTED_VENDORS:

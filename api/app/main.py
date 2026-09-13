@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import vendor_metrics, users, forecast, configuration, budget
 from app.helpers.secrets import Secrets
 from app.helpers.config import Config
+from app.helpers.sandbox import sandbox_enabled
 from app.migrations.run_all import run_migrations
 from pythonjsonlogger import jsonlogger
 
 import logging
+import os
 
 # Configure JSON logging
 logger = logging.getLogger()
@@ -28,7 +30,13 @@ logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 # Run migrations
-run_migrations()
+if sandbox_enabled():
+    from app.models import Base
+    from app.helpers.database import engine
+
+    Base.metadata.create_all(bind=engine)
+else:
+    run_migrations()
 
 
 def setup_app():
@@ -62,6 +70,11 @@ def setup_app():
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.CorsAllowedOrigins,
+        allow_origin_regex=(
+            r"https://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.infraspend\.pages\.dev"
+            if sandbox_enabled()
+            else None
+        ),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -77,3 +90,12 @@ app.include_router(users.router)
 app.include_router(forecast.router)
 app.include_router(configuration.router)
 app.include_router(budget.router)
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "sandbox": sandbox_enabled(),
+        "commit": os.getenv("PREVIEW_COMMIT"),
+    }

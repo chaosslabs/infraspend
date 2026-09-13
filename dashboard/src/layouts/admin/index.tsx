@@ -26,6 +26,12 @@ export default function Admin(props: { [x: string]: any }) {
         <main className="mx-auto h-full max-w-[1680px] px-3 transition-all md:px-4">
           <div>
             <Navbar />
+            {process.env.REACT_APP_PREVIEW_SANDBOX === "true" && (
+              <div role="status" className="my-3 rounded-lg bg-amber-100 p-3 text-sm text-amber-950">
+                Preview sandbox · Sample data · Changes reset on redeployment.
+                Real provider connections are disabled.
+              </div>
+            )}
             <div className="mx-auto mb-auto min-h-[84vh] pb-4">
               <Routes>
                 {getRoutes(routes)}

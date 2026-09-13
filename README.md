@@ -227,3 +227,35 @@ If you need help or have questions:
 - Thanks to all our contributors
 - Built with [React](https://reactjs.org/) and [FastAPI](https://fastapi.tiangolo.com/)
 - Powered by [Auth0](https://auth0.com/) for authentication
+
+## Auth0 login setup
+
+1. Create an Auth0 **Single Page Application** and use **Universal Login**.
+   Enable the connections your users should see (for example email/password or
+   Google) for that application. Password reset is handled by Universal Login
+   for database connections. Customize its logo, colors, and application name
+   in Auth0 Branding to match InfraSpend.
+2. For local development, add `http://localhost:3000` to **Allowed Callback
+   URLs** and **Allowed Web Origins**, and `http://localhost:3000/` to **Allowed
+   Logout URLs**. Add the equivalent HTTPS origin for each deployed environment.
+   The callback uses the origin, not `/auth/sign-in`.
+3. Register an Auth0 API using RS256. Copy its Identifier into
+   `REACT_APP_AUTH0_AUDIENCE`; configure the backend `AUTH0_AUDIENCE` to the same
+   value and `AUTH0_DOMAIN` to the same tenant hostname.
+4. Copy `dashboard/.env.example` to `dashboard/.env.local` and fill in the tenant
+   hostname (without `https://`), SPA client ID, and API audience. Restart the
+   development server or rebuild the frontend after changing these values:
+   Create React App embeds them at build time. Never put a client secret in
+   `REACT_APP_*` variables.
+
+Private workspace routes now require authentication. Sign-in restores the
+requested workspace path, including filters and fragments. Failed sign-in can
+be retried; the demo and support remain accessible while authentication loads,
+when it fails, or when configuration is absent. Tokens use the SDK's default
+in-memory cache. API authorization must still be enforced by the backend.
+
+Verify against your tenant: open a private deep link in a signed-out browser,
+complete Universal Login, confirm the original route and API data load, refresh,
+and sign out. Also cancel a login and verify retry and public demo access.
+See the [Auth0 React SDK documentation](https://auth0.com/docs/libraries/auth0-react)
+for tenant settings and session behavior.

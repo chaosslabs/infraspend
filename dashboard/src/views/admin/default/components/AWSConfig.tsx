@@ -22,6 +22,8 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const { getAccessTokenSilently } = useAuth0();
+  const inputClass =
+    "mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white";
 
   useEffect(() => {
     setIdentifier(initialIdentifier);
@@ -140,7 +142,7 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
               type="text"
               value={roleArn}
               onChange={(e) => setRoleArn(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white"
+              className={inputClass}
               placeholder="Enter AWS Role ARN"
               required
             />
@@ -159,7 +161,7 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               readOnly={lockIdentifier}
-              className={`mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white ${
+              className={`${inputClass} ${
                 lockIdentifier
                   ? "cursor-not-allowed bg-gray-100/50 dark:bg-white/5"
                   : ""

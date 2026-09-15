@@ -19,7 +19,9 @@ from app.services.forecast_service import ForecastService
 from app.services.datadog_service import DatadogService
 from app.services.aws_service import AWSService
 from app.services.heroku_service import HerokuService
-from app.services.monthly_costs import validate_monthly_cost_record
+from app.services.monthly_costs import validate_monthly_cost_record, add_month
+from app.helpers.sandbox import sandbox_enabled
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,50 @@ async def get_vendor_forecast(
 
         vendor_name = vendor_name.lower()
         manual_records = None
-        if vendor_name in AI_CONFIG_MODELS:
+        if sandbox_enabled():
+            models = {
+                **AI_CONFIG_MODELS,
+                "aws": AWSAPIConfiguration,
+                "datadog": DatadogAPIConfiguration,
+                "heroku": HerokuAPIConfiguration,
+            }
+            model = models.get(vendor_name)
+            if model is None:
+                return JSONResponse(
+                    status_code=400, content={"message": "Unsupported vendor"}
+                )
+            config = (
+                db.query(model)
+                .filter(model.user_id == user.id, model.identifier == identifier)
+                .first()
+            )
+            if config is None:
+                return JSONResponse(
+                    status_code=404, content={"message": "Sample account not found"}
+                )
+            rows = (
+                db.query(VendorMetrics)
+                .filter(
+                    VendorMetrics.user_id == user.id,
+                    VendorMetrics.vendor == vendor_name,
+                    VendorMetrics.identifier == identifier,
+                )
+                .all()
+            )
+            manual_records = {"data": []}
+            for row in rows:
+                start = datetime.strptime(row.month, "%m-%Y").date()
+                manual_records["data"].append(
+                    {
+                        "month": row.month,
+                        "cost": row.cost,
+                        "provider": vendor_name,
+                        "period_start": start,
+                        "period_end": add_month(start),
+                        "currency": row.provider_currency,
+                    }
+                )
+        elif vendor_name in AI_CONFIG_MODELS:
             model = AI_CONFIG_MODELS[vendor_name]
             config = (
                 db.query(model)

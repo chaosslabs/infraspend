@@ -37,6 +37,11 @@ with patch("infisical_sdk.InfisicalSDKClient", side_effect=AssertionError("Infis
     response = client.get("/v1/vendors-metrics/aws")
     assert response.status_code == 200, response.text
     assert len(response.json()["data"]) == 12
+    forecast = client.get("/v1/vendors-forecast/aws")
+    assert forecast.status_code == 200, forecast.text
+    assert forecast.json()["basis"]["status"] == "ready"
+    assert len(forecast.json()["forecast"]) == 12
+    assert client.get("/v1/vendors-forecast/aws?identifier=missing").status_code == 404
     assert client.get("/v1/budget-plans?vendor=aws").status_code == 200
     response = client.post("/v1/configuration/aws", json={
         "aws_access_key_id": "fake", "aws_secret_access_key": "fake"})

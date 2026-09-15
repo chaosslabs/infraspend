@@ -1,6 +1,6 @@
 # AWS setup for the Railway deployment
 
-Status checked 2026-09-15. This is an operator checklist, not completed AWS provisioning.
+Status checked 2026-09-15. CA prepared; workload authentication is not activated.
 
 ## Verified deployment boundary
 
@@ -12,8 +12,9 @@ were listed. Setting a role ARN alone does not authenticate the workload to AWS.
 
 The `platformlabs` AWS CLI profile is verified for company account `682334556539`.
 The current session is the account root identity; it is not the Railway workload
-identity. IAM lists only AWS service-linked roles, with no OIDC providers.
-In `us-east-1`, no Roles Anywhere trust anchors/profiles or ACM private CAs exist.
+identity. Before setup, IAM listed only AWS service-linked roles, with no OIDC
+providers. No Roles Anywhere trust anchors/profiles or ACM private CAs existed
+in `us-east-1`.
 The old `default` profile is not used for this setup. Do not paste keys or session
 tokens into tickets, chat, or committed files.
 
@@ -21,7 +22,16 @@ tokens into tickets, chat, or committed files.
 
 [`infra/aws/railway-identity.yaml`](../infra/aws/railway-identity.yaml) defines the
 dedicated trust anchor, `InfraSpendRailwayWorkload` IAM role, and Roles Anywhere
-profile. AWS CloudFormation `validate-template` passed. It has not been deployed.
+profile. AWS CloudFormation `validate-template` passed. The setup uses stack
+`infraspend-railway-identity` in `us-east-1`, with `IdentityEnabled=false`.
+The stack reached `CREATE_COMPLETE`; live checks confirmed the anchor/profile
+are disabled and the role has no inline or attached permissions policies.
+
+| Resource | ARN |
+| --- | --- |
+| Workload role | `arn:aws:iam::682334556539:role/InfraSpendRailwayWorkload` |
+| Trust anchor | `arn:aws:rolesanywhere:us-east-1:682334556539:trust-anchor/046b9904-4144-4310-bbae-22128f49b6b8` |
+| Profile | `arn:aws:rolesanywhere:us-east-1:682334556539:profile/75a821e0-f2b8-470d-8b91-7010183b9e3e` |
 
 - Supply only the public CA certificate as `CaCertificatePem`.
 - Trust requires this exact anchor, AWS account, and certificate subject CN
@@ -32,15 +42,44 @@ profile. AWS CloudFormation `validate-template` passed. It has not been deployed
 - The role initially has no permissions policies. Grant `sts:AssumeRole` only
   for individually approved customer role ARNs during onboarding.
 
-Certificate authority selection and signing-key custody are pending. A dedicated
-offline CA with 90-day workload certificates is the proposed starting point;
-the signing key must remain outside Railway. No keys or certificates have been
-generated and no IAM resources have been changed by this preparation.
+## Certificate preparation and custody
+
+A dedicated RSA-4096 root CA and RSA-3072 workload certificate were generated
+on 2026-09-15. Both use SHA-256 signatures. The root has `CA:true`, path length
+zero, and certificate/CRL signing usage; the leaf has `CA:false`, digital-signature
+usage and client authentication. OpenSSL verified the chain and client purpose.
+
+- Root expires 2031-09-14.
+- Workload certificate expires **2026-12-14 22:12:28 UTC**.
+- Rotate by **2026-11-14**. Rotation and expiry notifications are not automated.
+- Root SHA-256 fingerprint: `103797886ef15d51d752ea28b006e35f72cd5dccbcbb705f874b53291bf4afaf`.
+- Leaf serial: `6b4046bfe798ee5bd3a20b6e3e8f10e4058ea5e0`.
+
+Private material is staged outside Git under the operator's
+`~/.aws/infraspend-pki/`, with directories mode 0700 and files mode 0600.
+`offline-ca-staging/` holds the CA key and certificate; `railway-production/`
+holds a separate workload key and certificate. The manifest contains public
+fingerprints and expiry dates. Only the public CA certificate is sent to AWS.
+
+**The signing key is not yet offline or passphrase-encrypted.** Before activation,
+encrypt it with an operator-held passphrase, transfer the CA bundle to offline
+storage, verify recovery, and remove the staged local signing-key copy. Do not
+upload the root signing key to Railway, Git, or the application's secret store.
+The workload key can be installed in Railway's protected runtime secret storage
+when the signing-helper integration is ready; it has not been uploaded yet.
+
+For rotation, generate a new workload key and a new certificate with the same
+subject CN, sign it using the offline CA, and verify the chain and expiry before
+replacing the runtime leaf key/certificate. Verify fresh AWS sessions before
+retiring the old pair. Track issued serials; import a CA-signed CRL to revoke an
+individual certificate. For emergency containment, disable the trust anchor or
+profile; already-issued sessions may remain valid for up to one hour. CRL
+publication and certificate renewal are still manual operating work.
 
 ## Authentication plan
 
 Keep the API on Railway. For a workload outside AWS, use an explicitly configured
-temporary-credential provider. A candidate supported by AWS is **IAM Roles Anywhere**:
+temporary-credential provider. The selected approach is **IAM Roles Anywhere**:
 
 1. Identify the company AWS account and existing certificate authority/trust
    anchor, if any. Select and document certificate issuance, secure storage,

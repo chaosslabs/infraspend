@@ -1,3 +1,4 @@
+from .add_budget_account_scope import upgrade as add_budget_account_scope
 from .create_ai_configurations import upgrade as create_ai_configurations
 from .create_users_table import upgrade as create_users_table
 from .create_api_configurations_table import upgrade as create_api_configurations_table
@@ -27,4 +28,5 @@ MIGRATIONS = [
     add_lineage_to_vendor_metrics,
     create_vendor_metric_ingestion_runs_table,
     create_ai_configurations,
+    add_budget_account_scope,
 ]

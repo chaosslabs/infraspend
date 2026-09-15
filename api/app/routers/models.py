@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List
 from datetime import datetime
 
@@ -31,13 +31,32 @@ class UserProfile(BaseModel):
 
 
 class BudgetEntry(BaseModel):
-    month: str  # Format: MM-YYYY
-    amount: float
+    month: str = Field(regex=r"^(0[1-9]|1[0-2])-\d{4}$")
+    amount: float = Field(ge=0, allow_inf_nan=False)
+
+    @validator("month")
+    def valid_month(cls, value):
+        datetime.strptime(value, "%m-%Y")
+        return value
 
 
 class BudgetPlanCreate(BaseModel):
     vendor: str
     budgets: List[BudgetEntry]
+    # Omitted scope keeps the existing vendor-wide API contract.
+    identifier: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @validator("identifier")
+    def nonblank_identifier(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("identifier must not be blank")
+        return value
+
+    @validator("budgets")
+    def unique_months(cls, entries):
+        if len({entry.month for entry in entries}) != len(entries):
+            raise ValueError("Budget months must be unique")
+        return entries
 
 
 class BudgetPlanResponse(BaseModel):

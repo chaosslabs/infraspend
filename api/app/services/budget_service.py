@@ -5,8 +5,9 @@ from datetime import datetime
 import logging
 from app.models import BudgetPlan, User
 from app.routers.models import BudgetPlanCreate
+from app.services.monthly_costs import ALLOWED_PROVIDERS
 
-SUPPORTED_VENDORS = ["datadog", "aws", "heroku"]
+SUPPORTED_VENDORS = ALLOWED_PROVIDERS
 
 
 class BudgetService:
@@ -29,6 +30,7 @@ class BudgetService:
                 BudgetPlan.user_id == self.user.id,
                 BudgetPlan.vendor == plan_data.vendor.lower(),
                 BudgetPlan.type == "default",
+                BudgetPlan.identifier == plan_data.identifier,
             )
             .first()
         )
@@ -48,6 +50,7 @@ class BudgetService:
             budget_plan = BudgetPlan(
                 user_id=self.user.id,
                 vendor=plan_data.vendor.lower(),
+                identifier=plan_data.identifier,
                 budgets={
                     "budgets": [
                         {"month": entry.month, "amount": entry.amount}
@@ -90,6 +93,11 @@ class BudgetService:
 
         if not budget_plan:
             raise HTTPException(status_code=404, detail="Budget plan not found")
+
+        if plan_data.identifier != budget_plan.identifier:
+            raise HTTPException(
+                status_code=400, detail="Cannot change budget account scope"
+            )
 
         if plan_data.vendor.lower() != budget_plan.vendor:
             raise HTTPException(

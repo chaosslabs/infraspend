@@ -243,6 +243,7 @@ async def get_vendor_forecast(
                 "forecast": forecast_data["forecast_data"],
                 "sums": forecast_data["sums"],
                 "growth_rates": forecast_data["growth_rates"],
+                "basis": forecast_data["basis"],
                 "message": "Successfully retrieved forecast",
             },
         )

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { CallBackendService } from 'utils';
 
@@ -10,76 +10,67 @@ export interface BudgetEntry {
 export interface BudgetPlan {
   id: number;
   vendor: string;
+  identifier: string | null;
   user_id: number;
-  budgets: {
-    budgets: BudgetEntry[];
-  };
+  budgets: { budgets: BudgetEntry[] };
   created_at: string;
   updated_at: string;
   type: string;
 }
 
-interface UseBudgetPlansReturn {
-  loading: boolean;
-  error: string | null;
-  budgetPlan: BudgetPlan[] | null;
-  createBudgetPlan: (vendor: string, budgets: BudgetEntry[]) => Promise<void>;
-  fetchBudgetPlan: (vendor: string) => Promise<void>;
-}
-
-export const useBudgetPlans = (initialVendor: string): UseBudgetPlansReturn => {
+export const useBudgetPlans = (vendor: string, identifier: string) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [budgetPlan, setBudgetPlan] = useState<BudgetPlan[] | null>(null);
+  const [legacyPlans, setLegacyPlans] = useState<BudgetPlan[]>([]);
+  const requestId = useRef(0);
   const { getAccessTokenSilently } = useAuth0();
 
-  const fetchBudgetPlan = useCallback(async (vendor: string) => {
+  const fetchBudgetPlan = useCallback(async () => {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setError(null);
+    setBudgetPlan(null);
+    setLegacyPlans([]);
     try {
       const response = await CallBackendService(
-        `/v1/budget-plans?vendor=${vendor}`,
-        getAccessTokenSilently
-      );
-      setBudgetPlan(response.length > 0 ? response : null);
-    } catch (err) {
-      setError('Failed to fetch budget plan');
-      console.error('Error fetching budget plan:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [getAccessTokenSilently]);
-
-  const createBudgetPlan = useCallback(async (vendor: string, budgets: BudgetEntry[]) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await CallBackendService(
-        '/v1/budget-plans',
+        `/v1/budget-plans?vendor=${encodeURIComponent(vendor)}`,
         getAccessTokenSilently,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            vendor,
-            budgets
-          }),
-          headers: { "Content-Type": "application/json" },
-        }
       );
-      setBudgetPlan(response);
+      if (!Array.isArray(response?.data)) throw new Error('Invalid budget response');
+      if (currentRequest === requestId.current) {
+        setBudgetPlan(response.data.filter((plan: BudgetPlan) => plan.identifier === identifier));
+        setLegacyPlans(response.data.filter((plan: BudgetPlan) => plan.identifier == null));
+      }
     } catch (err) {
-      setError('Failed to create budget plan');
-      console.error('Error creating budget plan:', err);
+      if (currentRequest === requestId.current) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch budget plan');
+      }
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
+    }
+  }, [vendor, identifier, getAccessTokenSilently]);
+
+  const createBudgetPlan = useCallback(async (budgets: BudgetEntry[]) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await CallBackendService('/v1/budget-plans', getAccessTokenSilently, {
+        method: 'POST',
+        body: JSON.stringify({ vendor, identifier, budgets }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response?.data?.id || response.data.identifier !== identifier) {
+        throw new Error('Invalid budget save response');
+      }
+      setBudgetPlan([response.data]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save budget plan');
+      throw err;
     } finally {
       setLoading(false);
     }
-  }, [getAccessTokenSilently]);
+  }, [vendor, identifier, getAccessTokenSilently]);
 
-  return {
-    loading,
-    error,
-    budgetPlan,
-    createBudgetPlan,
-    fetchBudgetPlan
-  };
-}; 
+  return { loading, error, budgetPlan, legacyPlans, createBudgetPlan, fetchBudgetPlan };
+};

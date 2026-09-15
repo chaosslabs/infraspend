@@ -106,6 +106,8 @@ class BudgetPlan(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     vendor = Column(String)  # "datadog", "aws", or "heroku"
     type = Column(String, default="default")  # For future use with different plan types
+    # NULL preserves legacy vendor-wide plans without assigning them to an account.
+    identifier = Column(String, nullable=True)
     budgets = Column(JSON)  # Store monthly budgets as JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

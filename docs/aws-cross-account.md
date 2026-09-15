@@ -6,6 +6,8 @@ password; it binds requests to the authenticated tenant. Customers cannot choose
 or submit another tenant's external ID. Temporary credentials stay in memory and
 refresh before expiration. The SDK uses bounded timeouts and standard retries.
 
+For the current Railway deployment, follow the [Railway setup checklist](aws-railway-setup.md).
+
 ## Operator setup
 
 1. Run the API migrations before deploying the new API. The additive migration

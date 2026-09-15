@@ -20,6 +20,7 @@ interface ForecastEntry {
 }
 
 interface ForecastData {
+  basis?: { status: string; message: string; base_cost: number | null; base_month: string | null };
   forecast: ForecastEntry[];
   sums: {
     total_best_case: number;
@@ -38,6 +39,7 @@ interface VendorDetailsState {
   budgets: BudgetEntry[];
   loading: boolean;
   error: string | null;
+  success?: string | null;
 }
 
 const getVendorIcon = (vendor?: string) => {
@@ -57,7 +59,7 @@ const getVendorLabel = (vendor?: string) => {
   return vendor.charAt(0).toUpperCase() + vendor.slice(1);
 };
 
-const VendorDetails: React.FC = () => {
+const VendorDetailsContent: React.FC = () => {
   const { vendor } = useParams<{ vendor: string }>();
   const [searchParams] = useSearchParams();
   const identifier = searchParams.get("identifier") || "Default Configuration";
@@ -78,9 +80,11 @@ const VendorDetails: React.FC = () => {
   const {
     loading: budgetLoading,
     budgetPlan,
+    error: budgetError,
+    legacyPlans = [],
     createBudgetPlan,
     fetchBudgetPlan
-  } = useBudgetPlans(vendor);
+  } = useBudgetPlans(vendor, identifier);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -127,18 +131,11 @@ const VendorDetails: React.FC = () => {
   useEffect(() => {
     fetchMetrics();
     fetchForecastData();
-    fetchBudgetPlan(vendor);
+    fetchBudgetPlan();
   }, [fetchMetrics, fetchForecastData, fetchBudgetPlan, vendor]);
 
   useEffect(() => {
-    if (budgetPlan?.[0]) {
-      console.log('Budget plan received:', budgetPlan);
-      const budgetEntries = budgetPlan[0].budgets?.budgets || [];
-      setState(prev => ({
-        ...prev,
-        budgets: budgetEntries
-      }));
-    }
+    setState(prev => ({ ...prev, budgets: budgetPlan?.[0]?.budgets?.budgets || [], success: budgetPlan === null ? null : prev.success }));
   }, [budgetPlan]);
 
   const calculateSimulatedCost = (
@@ -161,7 +158,8 @@ const VendorDetails: React.FC = () => {
   const handleMoMChange = (value: number) => {
     setState(prev => ({
       ...prev,
-      momGrowth: value
+      momGrowth: value,
+      success: null
     }));
   };
 
@@ -172,7 +170,8 @@ const VendorDetails: React.FC = () => {
       ...prev,
       budgets: prev.budgets.map(budget => 
         budget.month === month ? { ...budget, amount: roundedAmount } : budget
-      )
+      ),
+      success: null
     }));
   };
 
@@ -186,7 +185,7 @@ const VendorDetails: React.FC = () => {
           ? forecast.cost
           : calculateSimulatedCost(
               forecast,
-              metrics[metrics.length - 1]?.cost,
+              forecastData.basis?.base_cost ?? 0,
               state.momGrowth,
               index,
               forecastData.forecast
@@ -201,7 +200,8 @@ const VendorDetails: React.FC = () => {
       // Only update the budgets in state, don't trigger a full reload
       setState(prev => ({
         ...prev,
-        budgets: updatedBudgets
+        budgets: updatedBudgets,
+        success: null
       }));
 
     } catch (error: any) {
@@ -213,9 +213,10 @@ const VendorDetails: React.FC = () => {
   };
 
   const saveBudgets = async () => {
+    setState(prev => ({ ...prev, success: null, error: null }));
     try {
       // Always use createBudgetPlan - backend will handle if it's new or existing
-      await createBudgetPlan(vendor, state.budgets);
+      await createBudgetPlan(state.budgets);
       setState(prev => ({
         ...prev,
         error: null,
@@ -240,7 +241,7 @@ const VendorDetails: React.FC = () => {
       nextMonth = new Date(year, month - 1);
       nextMonth.setMonth(nextMonth.getMonth() + 1);
     } else {
-      nextMonth = new Date();
+      nextMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       nextMonth.setMonth(nextMonth.getMonth() + 1);
     }
 
@@ -251,14 +252,16 @@ const VendorDetails: React.FC = () => {
 
     setState(prev => ({
       ...prev,
-      budgets: [...prev.budgets, { month: newMonth, amount: lastForecastAmount }]
+      budgets: [...prev.budgets, { month: newMonth, amount: lastForecastAmount }],
+      success: null
     }));
   };
 
   const removeBudgetMonth = (monthToRemove: string) => {
     setState(prev => ({
       ...prev,
-      budgets: prev.budgets.filter(budget => budget.month !== monthToRemove)
+      budgets: prev.budgets.filter(budget => budget.month !== monthToRemove),
+      success: null
     }));
   };
 
@@ -295,6 +298,17 @@ const VendorDetails: React.FC = () => {
         </button>
       </div>
 
+      {(state.error || budgetError) && <p role="alert" className="mb-4 text-red-600">{state.error || budgetError}</p>}
+      {budgetError && budgetPlan === null && <button onClick={fetchBudgetPlan} disabled={budgetLoading} className="mb-4 text-brand-500">Retry loading budget</button>}
+      {state.success && !budgetError && <p role="status" className="mb-4 text-green-600">{state.success}</p>}
+      <p className="mb-4 text-sm text-gray-600">Account: {identifier}. Budgets on this page apply only to this account.</p>
+      {legacyPlans.map(plan => (
+        <details key={plan.id} className="mb-4 text-sm text-gray-600">
+          <summary>Previous vendor-wide budget (preserved separately)</summary>
+          <p>This plan covers {vendorLabel} across accounts. It has not been assigned to this account; create an account budget below.</p>
+          <ul>{plan.budgets.budgets.map(entry => <li key={entry.month}>{entry.month}: ${entry.amount.toFixed(2)}</li>)}</ul>
+        </details>
+      ))}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
           <h3 className="mb-4 text-lg font-bold text-navy-700 dark:text-white">
@@ -312,7 +326,7 @@ const VendorDetails: React.FC = () => {
               <tbody>
                 {metrics.map((metric, index) => {
                   const prevMetric = metrics[index - 1];
-                  const momGrowth = prevMetric 
+                  const momGrowth = prevMetric?.cost > 0
                     ? ((metric.cost - prevMetric.cost) / prevMetric.cost) * 100 
                     : 0;
                   
@@ -340,11 +354,12 @@ const VendorDetails: React.FC = () => {
             <h3 className="mb-4 text-lg font-bold text-navy-700 dark:text-white">
               Cost Forecast
             </h3>
+            <p className="mb-4 text-sm text-gray-600" role="status">{forecastData?.basis?.message}</p>
             <div className="flex items-center space-x-4 mb-6">
               <span className="text-sm text-gray-600 dark:text-gray-400">Simulate your growth rate:</span>
               <input
                 type="range"
-                min="0"
+                min="-100"
                 max="100"
                 value={state.momGrowth}
                 onChange={(e) => handleMoMChange(Number(e.target.value))}
@@ -357,6 +372,7 @@ const VendorDetails: React.FC = () => {
             <div className="flex justify-end mb-4">
               <button
                 onClick={handleSetupBudgetPlan}
+                disabled={!forecastData?.forecast.length || budgetLoading}
                 className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
               >
                 Set up budget plan
@@ -381,7 +397,7 @@ const VendorDetails: React.FC = () => {
                     ? forecast.cost
                     : calculateSimulatedCost(
                         forecast,
-                        metrics[metrics.length - 1]?.cost,
+                        forecastData.basis?.base_cost ?? 0,
                         state.momGrowth,
                         index,
                         forecastData.forecast
@@ -411,7 +427,7 @@ const VendorDetails: React.FC = () => {
             </table>
           </div>
 
-          {forecastData && (
+          {!!forecastData?.forecast.length && (
             <div className="mt-6 grid grid-cols-4 gap-4">
               <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-800">
                 <p className="text-sm text-gray-600 dark:text-gray-400">Best Case Total</p>
@@ -448,7 +464,7 @@ const VendorDetails: React.FC = () => {
                       ? forecast.cost
                       : calculateSimulatedCost(
                           forecast,
-                          metrics[metrics.length - 1]?.cost,
+                          forecastData.basis?.base_cost ?? 0,
                           state.momGrowth,
                           index,
                           forecastData.forecast
@@ -484,6 +500,7 @@ const VendorDetails: React.FC = () => {
                 </span>
                 <input
                   type="number"
+                  aria-label={`Budget for ${budget.month}`}
                   value={budget.amount.toFixed(2)}
                   onChange={(e) => handleBudgetChange(budget.month, Number(e.target.value))}
                   step="0.01"
@@ -509,13 +526,20 @@ const VendorDetails: React.FC = () => {
         <button
           onClick={saveBudgets}
           className="rounded bg-brand-500 px-4 py-2 text-white hover:bg-brand-600"
-          disabled={budgetLoading}
+          disabled={budgetLoading || budgetPlan === null}
         >
           {budgetLoading ? 'Saving...' : 'Save Budgets'}
         </button>
       </div>
     </Card>
   );
+};
+
+// A different account gets fresh state; late requests cannot populate its editor.
+const VendorDetails: React.FC = () => {
+  const { vendor } = useParams<{ vendor: string }>();
+  const [params] = useSearchParams();
+  return <VendorDetailsContent key={JSON.stringify([vendor, params.get("identifier")])} />;
 };
 
 export default VendorDetails;

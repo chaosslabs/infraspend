@@ -28,7 +28,9 @@ domain_json=$(railway domain --service api --port 8000 --json)
 backend=$(jq -er '.domain // .domains[0]' <<< "$domain_json")
 [[ "$backend" == https://* ]] || backend="https://$backend"
 [[ "$backend" =~ ^https://[a-z0-9-]+\.up\.railway\.app$ ]] || { echo 'Invalid Railway domain'; exit 1; }
-railway up api --path-as-root --service api --environment "$environment" --ci
+# Log streaming can fail independently of deployment. The health/commit check
+# below remains the authority for publishing the paired frontend.
+railway up api --path-as-root --service api --environment "$environment" --detach
 for attempt in $(seq 1 90); do
   if curl --silent --fail --max-time 10 "$backend/health" | jq -e --arg commit "$PREVIEW_COMMIT" '.status == "ok" and .sandbox == true and .commit == $commit' > /dev/null; then
     printf 'backend_url=%s\n' "$backend" >> "$GITHUB_OUTPUT"

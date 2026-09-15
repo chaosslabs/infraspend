@@ -1,3 +1,5 @@
+import hashlib
+import json
 from sqlalchemy.orm import Session
 from app.models import (
     User,
@@ -22,16 +24,23 @@ class ConfigurationService:
             )
         self.secrets = SecretsService()
 
+    def _secret_name(self, vendor: str, identifier: str, field: str) -> str:
+        # Preserve legacy references until an account is explicitly saved again.
+        # Never update the old shared secret when configuring another account.
+        scope = json.dumps([self.user.sub, vendor, identifier], ensure_ascii=True)
+        digest = hashlib.sha256(scope.encode()).hexdigest()
+        return f"account_{digest}_{field}"
+
     def _configure_datadog(
         self, secrets_data: dict, identifier: str = "Default Configuration"
     ) -> tuple[int, str]:
         app_key = self.secrets.create_customer_secret(
-            f"user_{self.user.sub}_datadog_app_key",
+            self._secret_name("datadog", identifier, "app_key"),
             secrets_data["DATADOG_APP_KEY"],
             "datadog",
         )
         api_key = self.secrets.create_customer_secret(
-            f"user_{self.user.sub}_datadog_api_key",
+            self._secret_name("datadog", identifier, "api_key"),
             secrets_data["DATADOG_API_KEY"],
             "datadog",
         )
@@ -65,12 +74,12 @@ class ConfigurationService:
         self, secrets_data: dict, identifier: str = "Default Configuration"
     ) -> tuple[int, str]:
         access_key = self.secrets.create_customer_secret(
-            f"user_{self.user.sub}_aws_access_key",
+            self._secret_name("aws", identifier, "access_key"),
             secrets_data["AWS_ACCESS_KEY_ID"],
             "aws",
         )
         secret_key = self.secrets.create_customer_secret(
-            f"user_{self.user.sub}_aws_secret_key",
+            self._secret_name("aws", identifier, "secret_key"),
             secrets_data["AWS_SECRET_ACCESS_KEY"],
             "aws",
         )
@@ -104,7 +113,7 @@ class ConfigurationService:
         self, secrets_data: dict, identifier: str = "Default Configuration"
     ) -> tuple[int, str]:
         api_key = self.secrets.create_customer_secret(
-            f"user_{self.user.sub}_heroku_api_key",
+            self._secret_name("heroku", identifier, "api_key"),
             secrets_data["HEROKU_API_KEY"],
             "heroku",
         )

@@ -47,6 +47,32 @@ existing refresh job, cache/failure indicators, forecasts and budget views.
 Forecasts require at least two recorded months; they are estimates, not bills.
 The demo includes illustrative AI costs, not live account data.
 
+## Budgets, forecasts, and existing accounts
+
+Account detail budgets now support all seven listed sources and apply to the named
+account. Run backend migrations before deploying this version. The additive
+`add_budget_account_scope` migration preserves previous vendor-wide plans with a
+null account identifier; they remain readable through the existing API and are
+shown separately in the UI. They are never silently assigned to one account.
+Omitting `identifier` from budget API writes retains the vendor-wide contract;
+new UI writes include the account identifier. Saving an account budget does not
+overwrite a legacy vendor-wide plan.
+
+Forecasts use the most recent consecutive completed UTC months, excluding partial
+periods and the current month. At least two completed months, including the last
+closed month, are required. Missing months and zero-to-positive growth produce an
+explicit unavailable state rather than invented growth. Best/worst scenarios are
+illustrative estimates, not confidence intervals. Simulations use the same
+completed-month baseline as the forecast.
+
+AWS, Datadog and Heroku saves now use independent secret references per user,
+provider and account. Existing references remain readable; re-save each legacy
+account with its correct credentials to move it to an independent reference.
+Previously shared credentials cannot be reconstructed automatically. If multiple
+accounts previously shared a secret, verify their provider identity and historical
+totals before relying on those records. This update does not contact providers,
+rotate live credentials or rewrite historical costs during migration.
+
 ## Getting Started
 
 ### Prerequisites

@@ -2,11 +2,11 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { useAuth0 } from "@auth0/auth0-react";
-import { CallBackendService } from "utils/CallBackendService";
+import { CallBackendService } from "utils";
 import AWSConfig from "../AWSConfig";
 
 jest.mock("@auth0/auth0-react");
-jest.mock("utils/CallBackendService", () => ({
+jest.mock("utils", () => ({
   CallBackendService: jest.fn(),
 }));
 

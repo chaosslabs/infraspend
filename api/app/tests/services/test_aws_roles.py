@@ -114,3 +114,38 @@ def test_rejects_non_role_arns():
 
     with pytest.raises(ValidationError):
         AWSConfig(role_arn="arn:aws:iam::123456789012:root")
+
+
+def test_role_migration_is_idempotent_and_preserves_legacy_keys():
+    from sqlalchemy import create_engine, text
+    from app.migrations.add_aws_roles import upgrade
+    from app.migrations import MIGRATIONS
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY)"))
+        conn.execute(
+            text(
+                "CREATE TABLE aws_api_configurations (id INTEGER PRIMARY KEY, "
+                "aws_access_key_id VARCHAR, aws_secret_access_key VARCHAR)"
+            )
+        )
+        conn.execute(text("INSERT INTO users VALUES (1)"))
+        conn.execute(
+            text(
+                "INSERT INTO aws_api_configurations VALUES (1, 'legacy-id', 'legacy-ref')"
+            )
+        )
+    with patch("app.migrations.add_aws_roles.engine", engine):
+        upgrade()
+        upgrade()
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT aws_external_id FROM users")).scalar() is None
+        assert conn.execute(
+            text(
+                "SELECT aws_access_key_id, aws_secret_access_key, role_arn, "
+                "external_id FROM aws_api_configurations"
+            )
+        ).one() == ("legacy-id", "legacy-ref", None, None)
+    assert upgrade in MIGRATIONS
+    engine.dispose()

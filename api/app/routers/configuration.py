@@ -37,7 +37,7 @@ class DatadogConfig(BaseModel):
 
 
 class AWSConfig(BaseModel):
-    role_arn: constr(
+    role_arn: str = Field(
         regex=r"^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/\-]+$", max_length=2048
     )
     identifier: str = "Default Configuration"
@@ -89,6 +89,12 @@ async def configure_aws(
     user: User = Depends(get_user),
     db: Session = Depends(get_db),
 ) -> APIConfigResponse:
+    from app.helpers.sandbox import sandbox_enabled
+
+    if sandbox_enabled():
+        raise HTTPException(
+            403, "Real AWS connections are disabled in preview sandboxes"
+        )
     if not user.aws_external_id:
         raise HTTPException(400, "Generate the AWS trust policy first")
     try:
@@ -106,7 +112,8 @@ async def configure_aws(
         logger.warning("AWS role validation failed for user %s", user.id)
         raise HTTPException(
             400,
-            "Unable to read AWS costs. Check the role trust policy, external ID, and Cost Explorer permissions.",
+            "Unable to read AWS costs. Check the role trust policy, "
+            "external ID, and Cost Explorer permissions.",
         )
     existing = (
         db.query(AWSAPIConfiguration)
@@ -136,6 +143,12 @@ async def configure_aws(
 
 @router.post("/aws/setup")
 async def aws_setup(user: User = Depends(get_user), db: Session = Depends(get_db)):
+    from app.helpers.sandbox import sandbox_enabled
+
+    if sandbox_enabled():
+        raise HTTPException(
+            403, "Real AWS connections are disabled in preview sandboxes"
+        )
     principal = os.environ.get("AWS_INFRASPEND_ROLE_ARN")
     if not principal or not re.fullmatch(
         r"arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9_+=,.@/\-]+", principal

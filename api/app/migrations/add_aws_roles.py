@@ -1,19 +1,18 @@
-from sqlalchemy import text
+"""Add role fields while preserving existing key-based AWS configurations."""
+
+from sqlalchemy import inspect, text
 from app.helpers.database import engine
 
 
 def upgrade():
     with engine.begin() as conn:
-        conn.execute(
-            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS aws_external_id VARCHAR")
-        )
-        conn.execute(
-            text(
-                "ALTER TABLE aws_api_configurations ADD COLUMN IF NOT EXISTS role_arn VARCHAR"
-            )
-        )
-        conn.execute(
-            text(
-                "ALTER TABLE aws_api_configurations ADD COLUMN IF NOT EXISTS external_id VARCHAR"
-            )
-        )
+        for table, additions in (
+            ("users", ("aws_external_id",)),
+            ("aws_api_configurations", ("role_arn", "external_id")),
+        ):
+            columns = {column["name"] for column in inspect(conn).get_columns(table)}
+            for column in additions:
+                if column not in columns:
+                    conn.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR")
+                    )

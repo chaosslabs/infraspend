@@ -10,10 +10,32 @@ The live API is Railway service `infraspend` in project `positive-luck`, using
 Infisical bootstrap variables; no AWS variables or credential-provider mounts
 were listed. Setting a role ARN alone does not authenticate the workload to AWS.
 
-The local default AWS CLI profile returned `InvalidClientTokenId` during
-`aws sts get-caller-identity`. A valid profile for the intended company account
-is required before IAM resources can be inspected or created. Do not paste keys
-or session tokens into tickets, chat, or committed files.
+The `platformlabs` AWS CLI profile is verified for company account `682334556539`.
+The current session is the account root identity; it is not the Railway workload
+identity. IAM lists only AWS service-linked roles, with no OIDC providers.
+In `us-east-1`, no Roles Anywhere trust anchors/profiles or ACM private CAs exist.
+The old `default` profile is not used for this setup. Do not paste keys or session
+tokens into tickets, chat, or committed files.
+
+## Prepared infrastructure
+
+[`infra/aws/railway-identity.yaml`](../infra/aws/railway-identity.yaml) defines the
+dedicated trust anchor, `InfraSpendRailwayWorkload` IAM role, and Roles Anywhere
+profile. AWS CloudFormation `validate-template` passed. It has not been deployed.
+
+- Supply only the public CA certificate as `CaCertificatePem`.
+- Trust requires this exact anchor, AWS account, and certificate subject CN
+  `infraspend-railway-production`.
+- The profile exposes only that workload role, with one-hour sessions.
+- Identity issuance is disabled by default. Enable it only when the certificate
+  lifecycle and runtime credential provider are ready.
+- The role initially has no permissions policies. Grant `sts:AssumeRole` only
+  for individually approved customer role ARNs during onboarding.
+
+Certificate authority selection and signing-key custody are pending. A dedicated
+offline CA with 90-day workload certificates is the proposed starting point;
+the signing key must remain outside Railway. No keys or certificates have been
+generated and no IAM resources have been changed by this preparation.
 
 ## Authentication plan
 

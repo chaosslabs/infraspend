@@ -25,6 +25,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     sub = Column(String, unique=True, index=True)
+    aws_external_id = Column(String, nullable=True)
     email = Column(String, unique=True, index=True, nullable=True)
     name = Column(String, nullable=True)
     picture = Column(String, nullable=True)
@@ -76,6 +77,8 @@ class DatadogAPIConfiguration(APIConfiguration):
 class AWSAPIConfiguration(APIConfiguration):
     __tablename__ = "aws_api_configurations"
 
+    role_arn = Column(String, nullable=True)
+    external_id = Column(String, nullable=True)
     aws_access_key_id = Column(String)
     aws_secret_access_key = Column(String)
     user = relationship("User", back_populates="aws_configurations")

@@ -1,3 +1,4 @@
+import ConfigurationFormActions from "./ConfigurationFormActions";
 import React, { useEffect, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
@@ -15,13 +16,15 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
   initialIdentifier = "Default Configuration",
   lockIdentifier,
 }) => {
-  const [accessKeyId, setAccessKeyId] = useState("");
-  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [roleArn, setRoleArn] = useState("");
+  const [setup, setSetup] = useState<any>(null);
   const [identifier, setIdentifier] = useState(initialIdentifier);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const { getAccessTokenSilently } = useAuth0();
+  const inputClass =
+    "mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white";
 
   useEffect(() => {
     setIdentifier(initialIdentifier);
@@ -40,25 +43,25 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
         {
           method: "POST",
           body: JSON.stringify({
-            aws_access_key_id: accessKeyId,
-            aws_secret_access_key: secretAccessKey,
-            identifier: identifier
+            role_arn: roleArn,
+            identifier: identifier,
           }),
           headers: { "Content-Type": "application/json" },
         }
       );
 
-      setSuccess(existingConfig 
-        ? "AWS credentials updated successfully!" 
-        : "AWS credentials configured successfully!");
-      setAccessKeyId("");
-      setSecretAccessKey("");
-      
+      setSuccess(
+        existingConfig
+          ? "AWS role updated successfully!"
+          : "AWS role configured successfully!"
+      );
+      setRoleArn("");
+
       if (onConfigured) {
         onConfigured();
       }
     } catch (error: any) {
-      setError(error.message || "Failed to configure AWS credentials");
+      setError(error.message || "Failed to configure AWS role");
     } finally {
       setLoading(false);
     }
@@ -90,39 +93,58 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
       </div>
 
       <div className="mt-8 w-full">
+        <p className="mb-4 text-sm">
+          Create a role in your AWS billing account using these policies, then
+          enter its ARN. Infraspend receives temporary, read-only access to
+          costs.
+        </p>
+        <button
+          type="button"
+          className="mb-4 text-brand-500"
+          onClick={async () => {
+            setError(null);
+            try {
+              setSetup(
+                await CallBackendService(
+                  "/v1/configuration/aws/setup",
+                  getAccessTokenSilently,
+                  { method: "POST" }
+                )
+              );
+            } catch (error: any) {
+              setError(error.message || "Unable to generate policies");
+            }
+          }}
+        >
+          Generate AWS role policies
+        </button>
+        {setup && (
+          <div className="mb-4 text-left text-sm">
+            <p>Trust policy</p>
+            <pre className="overflow-auto p-2">
+              {JSON.stringify(setup.trust_policy, null, 2)}
+            </pre>
+            <p>Permissions policy</p>
+            <pre className="overflow-auto p-2">
+              {JSON.stringify(setup.permissions_policy, null, 2)}
+            </pre>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex flex-col">
             <label
-              htmlFor="aws-access-key-id"
+              htmlFor="aws-role-arn"
               className="mb-2 text-sm font-medium text-gray-900 dark:text-white"
             >
-              AWS Access Key ID
+              AWS Role ARN
             </label>
             <input
-              id="aws-access-key-id"
+              id="aws-role-arn"
               type="text"
-              value={accessKeyId}
-              onChange={(e) => setAccessKeyId(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white"
-              placeholder="Enter AWS Access Key ID"
-              required
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label
-              htmlFor="aws-secret-access-key"
-              className="mb-2 text-sm font-medium text-gray-900 dark:text-white"
-            >
-              AWS Secret Access Key
-            </label>
-            <input
-              id="aws-secret-access-key"
-              type="password"
-              value={secretAccessKey}
-              onChange={(e) => setSecretAccessKey(e.target.value)}
-              className="mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white"
-              placeholder="Enter AWS Secret Access Key"
+              value={roleArn}
+              onChange={(e) => setRoleArn(e.target.value)}
+              className={inputClass}
+              placeholder="Enter AWS Role ARN"
               required
             />
           </div>
@@ -140,35 +162,23 @@ const AWSConfig: React.FC<AWSConfigProps> = ({
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               readOnly={lockIdentifier}
-              className={`mt-2 flex h-12 w-full items-center justify-center rounded-md border border-gray-200 bg-white/0 p-3 text-sm outline-none dark:!border-white/10 dark:text-white ${
-                lockIdentifier ? "cursor-not-allowed bg-gray-100/50 dark:bg-white/5" : ""
+              className={`${inputClass} ${
+                lockIdentifier
+                  ? "cursor-not-allowed bg-gray-100/50 dark:bg-white/5"
+                  : ""
               }`}
               placeholder="Enter configuration name"
               required
             />
           </div>
 
-          {error && (
-            <div className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-500 dark:bg-red-900/20">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="mt-4 rounded-lg bg-green-50 p-4 text-sm text-green-500 dark:bg-green-900/20">
-              {success}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`linear mt-4 w-full rounded-md bg-brand-500 px-4 py-3 text-base font-medium text-white transition duration-200 hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-400 dark:text-white dark:hover:bg-brand-300 dark:active:bg-brand-200 ${
-              loading ? "cursor-not-allowed opacity-50" : ""
-            }`}
-          >
-            {loading ? "Configuring..." : existingConfig ? "Update AWS" : "Configure AWS"}
-          </button>
+          <ConfigurationFormActions
+            provider="AWS"
+            loading={loading}
+            existingConfig={existingConfig}
+            error={error}
+            success={success}
+          />
         </form>
       </div>
     </div>

@@ -44,8 +44,9 @@ with patch("infisical_sdk.InfisicalSDKClient", side_effect=AssertionError("Infis
     assert client.get("/v1/vendors-forecast/aws?identifier=missing").status_code == 404
     assert client.get("/v1/budget-plans?vendor=aws").status_code == 200
     response = client.post("/v1/configuration/aws", json={
-        "aws_access_key_id": "fake", "aws_secret_access_key": "fake"})
+        "role_arn": "arn:aws:iam::123456789012:role/PreviewTest"})
     assert response.status_code == 403, response.text
+    assert client.post("/v1/configuration/aws/setup").status_code == 403
     Base.metadata.drop_all(engine)
 """
     result = subprocess.run(

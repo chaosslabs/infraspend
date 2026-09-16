@@ -14,6 +14,7 @@ spec:
       labels:
         app: {{ .Values.api.name }}
     spec:
+      serviceAccountName: {{ include "infraspend.serviceAccountName" . }}
       containers:
         - name: {{ .Values.api.name }}
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.global.imageRepository }}/{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"

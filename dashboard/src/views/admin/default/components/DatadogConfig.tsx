@@ -1,3 +1,4 @@
+import ConfigurationFormActions from "./ConfigurationFormActions";
 import React, { useEffect, useState } from 'react';
 import { useAuth0 } from "@auth0/auth0-react";
 import { CallBackendService } from "utils";
@@ -148,27 +149,13 @@ const DatadogConfig: React.FC<DatadogConfigProps> = ({
             />
           </div>
 
-          {error && (
-            <div className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-500 dark:bg-red-900/20">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="mt-4 rounded-lg bg-green-50 p-4 text-sm text-green-500 dark:bg-green-900/20">
-              {success}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`linear mt-4 w-full rounded-md bg-brand-500 px-4 py-3 text-base font-medium text-white transition duration-200 hover:bg-brand-600 active:bg-brand-700 dark:bg-brand-400 dark:text-white dark:hover:bg-brand-300 dark:active:bg-brand-200 ${
-              loading ? "cursor-not-allowed opacity-50" : ""
-            }`}
-          >
-            {loading ? "Configuring..." : (existingConfig ? "Update Datadog" : "Configure Datadog")}
-          </button>
+          <ConfigurationFormActions
+            provider="Datadog"
+            loading={loading}
+            existingConfig={existingConfig}
+            error={error}
+            success={success}
+          />
         </form>
       </div>
     </div>

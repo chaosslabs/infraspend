@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: InfraSpend Railway identity using IAM Roles Anywhere; customer access is granted separately.
+Parameters:
+  CaCertificatePem:
+    Type: String
+    Description: Public PEM CA certificate only. Never supply a private key.
+    AllowedPattern: '(?s)^-----BEGIN CERTIFICATE-----.*-----END CERTIFICATE-----\s*$'
+  CertificateCommonName:
+    Type: String
+    Default: infraspend-railway-production
+    AllowedPattern: '[a-zA-Z0-9.-]+'
+  IdentityEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+Conditions:
+  EnableIdentity: !Equals [!Ref IdentityEnabled, 'true']
+Resources:
+  TrustAnchor:
+    Type: AWS::RolesAnywhere::TrustAnchor
+    Properties:
+      Name: infraspend-railway-production
+      Enabled: !If [EnableIdentity, true, false]
+      Source:
+        SourceType: CERTIFICATE_BUNDLE
+        SourceData:
+          X509CertificateData: !Ref CaCertificatePem
+      Tags:
+        - Key: Application
+          Value: infraspend
+  WorkloadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: InfraSpendRailwayWorkload
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rolesanywhere.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+              - sts:SetSourceIdentity
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt TrustAnchor.TrustAnchorArn
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+                aws:PrincipalTag/x509Subject/CN: !Ref CertificateCommonName
+      Tags:
+        - Key: Application
+          Value: infraspend
+  WorkloadProfile:
+    Type: AWS::RolesAnywhere::Profile
+    Properties:
+      Name: infraspend-railway-production
+      Enabled: !If [EnableIdentity, true, false]
+      DurationSeconds: 3600
+      AcceptRoleSessionName: false
+      RoleArns:
+        - !GetAtt WorkloadRole.Arn
+      AttributeMappings:
+        - CertificateField: x509Subject
+          MappingRules:
+            - Specifier: CN
+      Tags:
+        - Key: Application
+          Value: infraspend
+Outputs:
+  WorkloadRoleArn:
+    Value: !GetAtt WorkloadRole.Arn
+    Description: AWS_INFRASPEND_ROLE_ARN for the API.
+  TrustAnchorArn:
+    Value: !GetAtt TrustAnchor.TrustAnchorArn
+  ProfileArn:
+    Value: !GetAtt WorkloadProfile.ProfileArn

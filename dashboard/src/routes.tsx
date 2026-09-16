@@ -1,3 +1,4 @@
+import Planning from "views/admin/planning";
 import MainDashboard from "views/admin/default";
 import Configuration from "views/admin/configuration";
 import SignIn from "views/auth/SignIn";
@@ -8,15 +9,22 @@ import VendorDetails from "views/admin/vendors/components/VendorDetails";
 
 const routes = [
   {
-    name: "Dashboard",
+    name: "Overview",
     layout: "/admin",
     path: "default",
     icon: <MdHome className="h-6 w-6" />,
     component: <MainDashboard />,
   },
   {
-    name: "Linked Accounts",
-    layout: "/admin", 
+    name: "Plan",
+    layout: "/admin",
+    path: "plan",
+    icon: <MdPreview className="h-6 w-6" />,
+    component: <Planning />,
+  },
+  {
+    name: "Sources",
+    layout: "/admin",
     path: "linked-accounts",
     icon: <MdSettings className="h-6 w-6" />,
     component: <Configuration />,

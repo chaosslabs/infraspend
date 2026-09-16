@@ -121,7 +121,7 @@ const AIBillingConfig: React.FC<
       <p>
         {manual
           ? "Enter the monthly total from your subscription bill in USD, including tax if charged. Each saved month is a manual entry; missing months remain unknown. Saving an existing month replaces its total."
-          : "Import organization-wide API billing with an organization admin API key. Subscription charges are entered separately. Credentials are stored in the existing secret manager."}
+          : "Import organization-wide API billing with an organization admin API key. Subscription charges are entered separately. InfraSpend uses this key to read billing costs. Admin keys can have broader permissions; use the narrowest permissions your organization supports."}
       </p>
       {!manual && (
         <p>
@@ -130,6 +130,15 @@ const AIBillingConfig: React.FC<
             : "Use an OpenAI organization Admin API key with permission to read costs; a project inference key is insufficient."}
         </p>
       )}
+      {!manual && <details className="rounded-lg border border-gray-200 p-3 dark:border-white/10">
+        <summary className="cursor-pointer font-semibold">Where to get a key & what gets imported</summary>
+        <div className="mt-3 space-y-3">
+          <a className="underline" target="_blank" rel="noreferrer" href={provider === "openai" ? "https://platform.openai.com/settings/organization/admin-keys" : "https://platform.claude.com/docs/en/manage-claude/usage-cost-api"}>Open {provider === "openai" ? "OpenAI Admin keys" : "Claude setup guide"} ↗</a>
+          <p>Imports organization API costs in USD, grouped by month, for up to the last year. Chat subscriptions are separate. Today’s usage is excluded.</p>
+          <p>After saving, open Overview to load costs. Reads refresh the current month when its stored data is over a day old. Provider reporting can lag; check the source status before using a total.</p>
+          <p>Saving credentials does not confirm an import. Errors and cached results appear with the source on Overview.</p>
+        </div>
+      </details>}
       <label className="block">
         Account name
         <input

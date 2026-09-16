@@ -1,33 +1,88 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-	html {
-		font-family: 'DM Sans', sans-serif !important;
-		font-feature-settings: 'kern' !important;
-		-webkit-font-smoothing: antialiased;
-		letter-spacing: 0;
-	}
+  html {
+    font-family: "DM Sans", sans-serif !important;
+    font-feature-settings: "kern" !important;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0;
+  }
 
-	body {
-		background: #f6f8fb;
-	}
+  body {
+    background: #f6f8fb;
+  }
 }
 
 input.defaultCheckbox::before {
-	content: url(../src/assets/svg/checked.svg); 
-	color: white;
-	opacity: 0; 
-	height: 16px; 
-	width: 16px;
-	position: absolute; 
-	left: 50%;
-	transform: translate(-50%, 0px);
-} 
+  content: url(../src/assets/svg/checked.svg);
+  color: white;
+  opacity: 0;
+  height: 16px;
+  width: 16px;
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 0px);
+}
 
-input:checked.defaultCheckbox::before { 
-	opacity: 1;
+input:checked.defaultCheckbox::before {
+  opacity: 1;
+}
+
+/* Explicit control colors also cover native date controls and autofill. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  color: #172343 !important;
+  background-color: #fff !important;
+  color-scheme: light;
+}
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select {
+  color: #f4f7fe !important;
+  background-color: #101936 !important;
+  color-scheme: dark;
+}
+input:-webkit-autofill {
+  -webkit-text-fill-color: #172343;
+}
+.dark input:-webkit-autofill {
+  -webkit-text-fill-color: #f4f7fe;
+  box-shadow: 0 0 0 1000px #101936 inset;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #369d9a;
+  outline-offset: 3px;
+}
+@layer components {
+  .is-page {
+    @apply mx-auto max-w-6xl space-y-6 py-6 text-navy-700 dark:text-white;
+  }
+  .is-title {
+    @apply text-3xl font-bold leading-tight;
+  }
+  .is-muted {
+    @apply text-sm leading-6 text-gray-600 dark:text-gray-300;
+  }
+  .is-panel {
+    @apply rounded-xl border border-gray-200 bg-white p-6 dark:border-white/10 dark:bg-navy-800;
+  }
+  .is-input {
+    @apply mt-2 block w-full rounded-md border border-gray-300 p-3 text-sm dark:border-white/20;
+  }
+  .is-button {
+    @apply inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50;
+  }
+  .is-button-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-3 text-sm font-semibold disabled:opacity-50 dark:border-white/20;
+  }
 }

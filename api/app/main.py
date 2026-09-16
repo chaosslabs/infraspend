@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import vendor_metrics, users, forecast, configuration, budget
+from app.routers import vendor_metrics, users, forecast, configuration, budget, planning
 from app.helpers.secrets import Secrets
 from app.helpers.config import Config
 from app.helpers.sandbox import sandbox_enabled
@@ -90,6 +90,7 @@ app.include_router(users.router)
 app.include_router(forecast.router)
 app.include_router(configuration.router)
 app.include_router(budget.router)
+app.include_router(planning.router)
 
 
 @app.get("/health")

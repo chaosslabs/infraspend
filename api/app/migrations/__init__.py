@@ -1,3 +1,4 @@
+from .create_planning_revisions import upgrade as create_planning_revisions
 from .add_budget_account_scope import upgrade as add_budget_account_scope
 from .create_ai_configurations import upgrade as create_ai_configurations
 from .add_aws_roles import upgrade as add_aws_roles
@@ -31,4 +32,5 @@ MIGRATIONS = [
     create_ai_configurations,
     add_budget_account_scope,
     add_aws_roles,
+    create_planning_revisions,
 ]

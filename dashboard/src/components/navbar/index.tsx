@@ -39,7 +39,7 @@ const Navbar: React.FC = () => {
                 InfraSpend
               </p>
               <p className="text-sm font-bold text-navy-700 dark:text-white">
-                FinOps workspace
+                Spend & budgets
               </p>
             </div>
           </div>

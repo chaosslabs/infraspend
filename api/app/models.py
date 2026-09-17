@@ -267,3 +267,20 @@ AI_CONFIG_MODELS = {
     "claude": ClaudeSubscriptionConfiguration,
     "chatgpt": ChatGPTSubscriptionConfiguration,
 }
+
+
+class PlanningRevision(Base):
+    """Immutable user-scoped snapshots of a manual scenario and its action."""
+
+    __tablename__ = "planning_revisions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    plan_id = Column(String(36), nullable=False)
+    version = Column(Integer, nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            "user_id", "plan_id", "version", name="uq_planning_revision"
+        ),
+    )

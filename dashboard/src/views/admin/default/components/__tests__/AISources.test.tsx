@@ -163,7 +163,8 @@ it("includes all seven sources in the demo with two manual subscription labels",
       <DemoDashboard />
     </MemoryRouter>
   );
-  expect(screen.getByText("7")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Explore sample source records"));
+  expect(screen.getByText("7 sample sources")).toBeInTheDocument();
   expect(
     screen.getByRole("heading", { name: "Claude API cost evidence" })
   ).toBeInTheDocument();

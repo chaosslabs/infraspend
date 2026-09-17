@@ -1,14 +1,39 @@
 # InfraSpend - Open Source FinOps Dashboard
 
-InfraSpend is an open-source FinOps dashboard designed to help organizations monitor, analyze, and optimize their cloud spending across multiple vendors.
+InfraSpend helps teams track SaaS, cloud infrastructure, and AI spending across providers, monitor costs, and plan their engineering tools budget.
 
 ![InfraSpend Screenshot](dashboard/public/screenshot.png)
 
 ## Features
 
-- 📊 **Budget Tracking**: Monitor your cloud spending across multiple vendors
-- 📈 **Cost Forecasting**: Predict future cloud costs using common forecasting techniques
-- 🤖 **AI-Powered Insights** (Coming Soon): AI-driven forecasts and optimization suggestions
+- **Overview**: Review recorded costs, account budgets, trend estimates, and missing coverage by month. API costs, manual subscriptions, and cloud/tools stay separate.
+- **Plan**: Compare a manually entered usage scenario against a monthly budget. Fixed costs stay separate; every save preserves a revision.
+- **Action tracking**: Record an owner, success criteria, measurement windows, and observed cost per accepted task. Results do not automatically imply causal savings.
+- **Sources**: Connect billing APIs or add monthly subscription bills. Setup guidance and source status make coverage explicit.
+- **Public sample**: Try planning without credentials at `/demo`; sample revisions last only for the visit.
+
+## Simple planning workflow
+
+Primary navigation is **Overview → Plan → Sources**. Account links on Overview retain
+existing account budget editing. The separate Plan workspace is for a workload or team
+scenario; saving it does not overwrite account budgets or enforce provider limits.
+
+The calculator applies usage change to a monthly variable-cost baseline, then applies
+a proposed reduction to that variable cost only. Fixed subscriptions are added afterwards.
+Inputs are manually entered and are not automatically reconciled billing evidence or
+provider price quotes. Source, period, exclusions, and rate assumptions can be recorded
+under **Fixed costs & assumptions**. An action and its measurement details are optional
+until advancing its status. Negative or failed-quality results can be recorded honestly.
+
+Deploy the API migration `create_planning_revisions` before the updated frontend.
+No new environment variables or provider permissions are needed. Plan snapshots use
+`GET/POST /v1/planning` and `GET /v1/planning/{plan_id}/history`; all are scoped to the
+JWT-authenticated user. Writes include a UUID `plan_id`, `expected_version`, and validated
+`payload`. Concurrent/stale saves return 409. History is immutable through these APIs.
+Lists accept bounded `offset`/`limit`; the UI shows up to 100 recent plans/revisions.
+Export includes the sample/manual marker, saved revision, and unsaved-change flag.
+
+See [implementation checks and remaining discovery](docs/design-review-2026-09-15/implementation.md).
 
 ## Supported Integrations
 
@@ -22,7 +47,7 @@ InfraSpend is an open-source FinOps dashboard designed to help organizations mon
 ### Claude and ChatGPT billing setup
 
 Run the normal backend migrations (`cd api && python -m app.migrations.run_all`)
-before using the new sources. In **Integrations / Source setup**, choose:
+before using the new sources. In **Sources**, choose:
 
 - **Claude API (Anthropic)**: Enter a Claude Console organization Admin API key.
   InfraSpend reads the [Anthropic Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api),
@@ -87,6 +112,15 @@ rotate live credentials or rewrite historical costs during migration.
 ### Installation
 
 #### Local Development
+
+For new local Codex-managed worktrees, `.worktreeinclude` copies ignored `.env`,
+`.env.local`, and `.env.*.local` files from the source checkout at the repository
+root and inside `api/` and `dashboard/`. Keep your local settings in the main
+checkout first (frontend Auth0 settings belong in `dashboard/.env.local`).
+Existing destination files are preserved, source symlinks are skipped, and secret
+values remain outside Git. This happens at worktree creation, not every time you
+reopen a task, and does not apply to `git worktree add` from the command line.
+Restart a running development server after changing its environment files.
 
 1. Clone the repository:
 ```bash

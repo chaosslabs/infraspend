@@ -3,5 +3,6 @@ api/test.db
 .DS_Store
 dashboard/build/
 .codex/
+.env
 .env.local
 .env.*.local

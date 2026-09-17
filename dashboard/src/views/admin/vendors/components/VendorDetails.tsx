@@ -354,7 +354,7 @@ const VendorDetailsContent: React.FC = () => {
             <h3 className="mb-4 text-lg font-bold text-navy-700 dark:text-white">
               Cost Forecast
             </h3>
-            <p className="mb-4 text-sm text-gray-600" role="status">{forecastData?.basis?.message}</p>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-300" role="status">Illustrative growth scenarios, not confidence intervals. {forecastData?.basis?.message}</p>
             <div className="flex items-center space-x-4 mb-6">
               <span className="text-sm text-gray-600 dark:text-gray-400">Simulate your growth rate:</span>
               <input
@@ -385,9 +385,9 @@ const VendorDetailsContent: React.FC = () => {
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="py-3 text-left text-sm font-semibold text-gray-600 dark:text-gray-400">Month</th>
-                  <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Best Case</th>
+                  <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Lower-growth scenario</th>
                   <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Forecast</th>
-                  <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Worst Case</th>
+                  <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Higher-growth scenario</th>
                   <th className="py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">Your Forecast</th>
                 </tr>
               </thead>
@@ -430,7 +430,7 @@ const VendorDetailsContent: React.FC = () => {
           {!!forecastData?.forecast.length && (
             <div className="mt-6 grid grid-cols-4 gap-4">
               <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-800">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Best Case Total</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Lower-growth scenario Total</p>
                 <p className="text-lg font-bold text-green-500">
                   ${forecastData.sums.total_best_case.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   <span className="mt-1 block text-sm text-gray-400">
@@ -448,7 +448,7 @@ const VendorDetailsContent: React.FC = () => {
                 </p>
               </div>
               <div className="rounded-xl bg-gray-50 p-4 dark:bg-navy-800">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Worst Case Total</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Higher-growth scenario Total</p>
                 <p className="text-lg font-bold text-red-500">
                   ${forecastData.sums.total_worst_case.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                   <span className="mt-1 block text-sm text-gray-400">

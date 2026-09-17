@@ -1,233 +1,331 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  MdAddCircleOutline,
-  MdAccountTree,
-  MdBarChart,
-  MdCalendarMonth,
-  MdRule,
-} from "react-icons/md";
-import Card from "components/card";
-import VendorMetrics from "./components/VendorMetrics";
+import { useAuth0 } from "@auth0/auth0-react";
+import { CallBackendService } from "utils";
 import { useAPIConfigurations } from "./components/hooks/useAPIConfigurations";
-import { LoadingState } from "components/loading/LoadingState";
+import {
+  SourceHealthBadge,
+  SourceHealthFields,
+  deriveSourceHealth,
+} from "./components/SourceHealth";
+import { BudgetPlan } from "../vendors/hooks/useBudgetPlans";
+import { money } from "../planning/model";
 
-const VENDOR_TITLES: Record<string, string> = {
-  datadog: "Datadog cost evidence",
-  aws: "AWS cost evidence",
-  heroku: "Heroku cost evidence",
-  openai: "OpenAI API cost evidence",
-  anthropic: "Claude API cost evidence",
-  claude: "Claude subscription costs",
-  chatgpt: "ChatGPT subscription costs",
+const names: Record<string, string> = {
+  openai: "OpenAI API",
+  anthropic: "Claude API",
+  claude: "Claude subscription",
+  chatgpt: "ChatGPT subscription",
+  aws: "AWS",
+  datadog: "Datadog",
+  heroku: "Heroku",
 };
-
-const PRODUCT_SIGNALS = [
-  {
-    label: "Linked accounts",
-    value: "Configured",
-    detail: "Cloud, AI API, and subscription sources",
-    icon: <MdAccountTree className="h-5 w-5" aria-hidden="true" />,
-  },
-  {
-    label: "Cost metrics",
-    value: "Current",
-    detail: "monthly spend and source freshness",
-    icon: <MdBarChart className="h-5 w-5" aria-hidden="true" />,
-  },
-  {
-    label: "Budget planning",
-    value: "Available",
-    detail: "vendor details include forecast budgets",
-    icon: <MdCalendarMonth className="h-5 w-5" aria-hidden="true" />,
-  },
-];
-
-const Dashboard = () => {
-  const { configurations, loading } = useAPIConfigurations();
-  const visibleConfigurations = configurations.filter(
-    (config) => VENDOR_TITLES[config.type],
-  );
-
+interface Metric {
+  month: string;
+  cost: number;
+  currency?: string;
+  period_start?: string;
+  period_end?: string;
+}
+interface Metrics extends SourceHealthFields {
+  data: Metric[];
+}
+interface Forecast {
+  forecast: {
+    month: string;
+    cost: number;
+    best_case: number;
+    worst_case: number;
+  }[];
+  basis?: { message: string };
+}
+interface Account {
+  id: number;
+  type: string;
+  identifier: string;
+}
+interface Loaded {
+  config: Account;
+  metrics: Metrics | null;
+  forecast: Forecast | null;
+  budgets: BudgetPlan[] | null;
+}
+const category = (type: string) =>
+  ["claude", "chatgpt"].includes(type)
+    ? "Manual subscriptions"
+    : ["openai", "anthropic"].includes(type)
+    ? "AI APIs"
+    : "Cloud & other tools";
+export default function Dashboard() {
+  const { configurations, loading, error, refresh } = useAPIConfigurations();
+  const { getAccessTokenSilently } = useAuth0();
+  const [rows, setRows] = useState<Loaded[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const monthKey = month ? `${month.slice(5)}-${month.slice(0, 4)}` : "";
   useEffect(() => {
-    document.title = "Dashboard";
+    document.title = "Overview · InfraSpend";
   }, []);
-
-  if (loading) {
-    return <LoadingState />;
-  }
-
-  if (visibleConfigurations.length === 0) {
+  useEffect(() => {
+    let active = true;
+    const configs = configurations.filter((c) => names[c.type]);
+    if (!configs.length) {
+      setRows([]);
+      setFetching(false);
+      return;
+    }
+    setFetching(true);
+    setRows([]);
+    Promise.all(
+      configs.map(async (config) => {
+        const suffix = `${config.type}?identifier=${encodeURIComponent(
+          config.identifier
+        )}`;
+        // Forecast reads share the same ingestion path. Finish the metrics read
+        // first so a cold account does not start two provider imports at once.
+        const metricsRequest = CallBackendService(
+          `/v1/vendors-metrics/${suffix}`,
+          getAccessTokenSilently
+        );
+        const [m, f, b] = await Promise.allSettled([
+          metricsRequest,
+          metricsRequest.then(() =>
+            CallBackendService(
+              `/v1/vendors-forecast/${suffix}`,
+              getAccessTokenSilently
+            )
+          ),
+          CallBackendService(
+            `/v1/budget-plans?vendor=${config.type}`,
+            getAccessTokenSilently
+          ),
+        ]);
+        return {
+          config,
+          metrics: m.status === "fulfilled" ? (m.value as Metrics) : null,
+          forecast: f.status === "fulfilled" ? (f.value as Forecast) : null,
+          budgets:
+            b.status === "fulfilled" ? (b.value.data as BudgetPlan[]) : null,
+        };
+      })
+    ).then((result) => {
+      if (active) {
+        setRows(result);
+        setFetching(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [configurations, getAccessTokenSilently, attempt]);
+  if (loading)
     return (
-      <div className="mx-auto mt-3 max-w-[1080px]">
-        <Card extra="overflow-hidden !p-0">
-          <div className="grid gap-8 p-6 md:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
-            <section className="max-w-[720px]">
-              <p className="text-sm font-semibold uppercase text-brand-600 dark:text-teal-200">
-                InfraSpend setup
-              </p>
-              <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight text-navy-700 dark:text-white">
-                Connect your first source to build a trustworthy cost evidence
-                view.
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-gray-700 dark:text-gray-300">
-                Start with a read-only billing source. The dashboard will keep
-                freshness, records, and forecast context visible instead of
-                treating every number as equally reliable.
-              </p>
-              <Link
-                to="/admin/linked-accounts"
-                className="mt-6 inline-flex items-center gap-2 rounded-md bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
-              >
-                <MdAddCircleOutline className="h-5 w-5" aria-hidden="true" />
-                Link an account
-              </Link>
-            </section>
-            <aside className="max-w-xl border-t border-gray-200/80 pt-6 dark:border-white/10 lg:max-w-none lg:border-l-2 lg:border-t-0 lg:border-brand-200/60 lg:py-1 lg:pl-6 dark:lg:border-teal-300/40">
-              <h2 className="text-sm font-bold uppercase text-gray-500 dark:text-gray-400">
-                Setup checklist
-              </h2>
-              <div className="mt-4 space-y-3">
-                {[
-                  "Read-only provider credentials",
-                  "Current source freshness",
-                  "Budget plan from forecast data",
-                ].map((item, index) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-50 text-sm font-bold text-brand-700 ring-1 ring-brand-100 dark:bg-navy-900 dark:text-teal-200 dark:ring-white/10">
-                      {index + 1}
-                    </span>
-                    <p className="text-sm font-medium leading-6 text-navy-700 dark:text-white">
-                      {item}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          </div>
-        </Card>
+      <div className="is-page" role="status">
+        Loading workspace…
       </div>
     );
-  }
-
+  if (error)
+    return (
+      <div className="is-page" role="alert">
+        <h1 className="is-title">Could not load your sources</h1>
+        <p>{error}</p>
+        <button className="is-button" onClick={refresh}>
+          Retry
+        </button>
+      </div>
+    );
+  if (!configurations.filter((c) => names[c.type]).length)
+    return (
+      <div className="is-page">
+        <section className="is-panel mx-auto max-w-3xl py-10 md:p-10">
+          <h1 className="is-title">Plan your AI and engineering spend.</h1>
+          <p className="is-muted mt-4 max-w-xl">
+            See your costs, compare plans, and understand what could put you
+            over budget.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Link className="is-button" to="/admin/linked-accounts">
+              Add a source
+            </Link>
+            <Link className="is-button-secondary" to="/demo">
+              Try a sample
+            </Link>
+          </div>
+          <p className="is-muted mt-6">
+            No credentials yet?{" "}
+            <Link className="font-semibold underline" to="/admin/plan">
+              Start a manual plan
+            </Link>
+            .
+          </p>
+        </section>
+      </div>
+    );
   return (
-    <div className="mx-auto mt-3 max-w-[1500px] space-y-6">
-      <section className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-        <Card extra="overflow-hidden !p-0">
-          <div className="p-6">
-            <p className="text-sm font-semibold uppercase text-brand-600 dark:text-teal-200">
-              Evidence-grade FinOps
-            </p>
-            <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h1 className="max-w-3xl text-3xl font-bold leading-tight text-navy-700 dark:text-white">
-                  Cost evidence cockpit
-                </h1>
-                <p className="mt-3 max-w-3xl text-base leading-7 text-gray-700 dark:text-gray-300">
-                  Review spend with source freshness, historical metrics, and
-                  forecast context before changing budgets.
-                </p>
-              </div>
-              <Link
-                to="/admin/linked-accounts"
-                className="inline-flex w-fit items-center gap-2 rounded-md border border-gray-200 px-4 py-3 text-sm font-semibold text-navy-700 transition-colors hover:border-brand-200 hover:bg-brand-50 dark:border-white/10 dark:text-white dark:hover:bg-white/10"
-              >
-                <MdRule className="h-5 w-5" aria-hidden="true" />
-                Manage sources
-              </Link>
-            </div>
-          </div>
-        </Card>
-
-        <Card extra="!p-0">
-          <div className="grid h-full grid-cols-3 divide-x divide-gray-200 dark:divide-white/10">
-            <div className="p-5">
-              <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                Sources
-              </p>
-              <p className="mt-2 text-2xl font-bold text-navy-700 dark:text-white">
-                {visibleConfigurations.length}
-              </p>
-              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                connected
-              </p>
-            </div>
-            <div className="p-5">
-              <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                Mode
-              </p>
-              <p className="mt-2 text-2xl font-bold text-navy-700 dark:text-white">
-                Review
-              </p>
-              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                source visible
-              </p>
-            </div>
-            <div className="p-5">
-              <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                Scope
-              </p>
-              <p className="mt-2 text-2xl font-bold text-navy-700 dark:text-white">
-                Cost
-              </p>
-              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                evidence first
-              </p>
-            </div>
-          </div>
-        </Card>
-      </section>
-
-      <section className="grid gap-5 md:grid-cols-3">
-        {PRODUCT_SIGNALS.map((signal) => (
-          <Card key={signal.label} extra="!p-5">
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600 ring-1 ring-brand-100 dark:bg-brand-500/10 dark:text-teal-200 dark:ring-brand-400/20">
-                {signal.icon}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">
-                  {signal.label}
-                </p>
-                <p className="mt-1 text-lg font-bold text-navy-700 dark:text-white">
-                  {signal.value}
-                </p>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  {signal.detail}
-                </p>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </section>
-
-      <section>
-        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-navy-700 dark:text-white">
-              Source review
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Each source keeps cost, freshness, and forecast context together.
-            </p>
-          </div>
-          <p className="text-sm font-semibold text-brand-600 dark:text-teal-200">
-            {visibleConfigurations.map((config) => config.type.toUpperCase()).join(" / ")}
+    <div className="is-page">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="is-title">Your spend</h1>
+          <p className="is-muted mt-2">
+            Review costs and budgets, then decide what to change.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-5 2xl:grid-cols-2">
-          {visibleConfigurations.map((config) => (
-            <VendorMetrics
-              key={`${config.type}-${config.id}`}
-              identifier={config.identifier}
-              vendor={config.type as "datadog" | "aws" | "heroku" | "openai" | "anthropic" | "claude" | "chatgpt"}
-              title={VENDOR_TITLES[config.type]}
-            />
-          ))}
-        </div>
-      </section>
+        <Link className="is-button" to="/admin/plan">
+          Plan a change
+        </Link>
+      </header>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm font-medium">
+          Month
+          <input
+            className="is-input"
+            type="month"
+            required
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+          />
+        </label>
+        <button
+          className="is-button-secondary"
+          disabled={fetching}
+          onClick={() => setAttempt((a) => a + 1)}
+        >
+          {fetching ? "Loading…" : "Reload"}
+        </button>
+      </div>
+      {fetching ? (
+        <p role="status" className="is-muted">
+          Loading costs, forecasts and budgets…
+        </p>
+      ) : (
+        ["AI APIs", "Manual subscriptions", "Cloud & other tools"].map(
+          (group) => {
+            const grouped = rows.filter(
+              (r) => category(r.config.type) === group
+            );
+            if (!grouped.length) return null;
+            return (
+              <section key={group} className="is-panel">
+                <h2 className="mb-4 text-lg font-semibold">{group}</h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[680px] text-left text-sm">
+                    <thead className="is-muted">
+                      <tr>
+                        <th className="pb-3">Account</th>
+                        <th className="pb-3">Recorded</th>
+                        <th className="pb-3">Budget</th>
+                        <th className="pb-3">Trend estimate</th>
+                        <th className="pb-3">Budget gap</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grouped.map(({ config, metrics, forecast, budgets }) => {
+                        const record = metrics?.data?.find(
+                          (r) => r.month === monthKey
+                        );
+                        const cost =
+                          record &&
+                          (!record.currency || record.currency === "USD")
+                            ? record.cost
+                            : null;
+                        const budget = budgets
+                          ?.find((b) => b.identifier === config.identifier)
+                          ?.budgets.budgets.find(
+                            (b) => b.month === monthKey
+                          )?.amount;
+                        const estimate = forecast?.forecast?.find(
+                          (f) => f.month === monthKey
+                        );
+                        const gap =
+                          budget != null && estimate
+                            ? estimate.cost - budget
+                            : null;
+                        return (
+                          <tr
+                            key={`${config.type}-${config.id}`}
+                            className="border-t border-gray-200 align-top dark:border-white/10"
+                          >
+                            <td className="py-4 pr-4">
+                              <Link
+                                className="font-semibold underline"
+                                to={`/admin/vendors/${
+                                  config.type
+                                }?identifier=${encodeURIComponent(
+                                  config.identifier
+                                )}`}
+                              >
+                                {names[config.type]}
+                              </Link>
+                              <p className="is-muted">{config.identifier}</p>
+                              {metrics && (
+                                <SourceHealthBadge
+                                  health={deriveSourceHealth(metrics)}
+                                />
+                              )}
+                              <p className="is-muted mt-1">
+                                {group === "Manual subscriptions"
+                                  ? "Manually entered"
+                                  : "Provider-reported"}
+                              </p>
+                            </td>
+                            <td className="py-4 pr-4">
+                              {cost == null ? "Unknown" : money(cost)}
+                              <p className="is-muted">
+                                {record?.period_start && record.period_end
+                                  ? `${record.period_start} to ${record.period_end} (end exclusive)`
+                                  : cost == null
+                                  ? "No usable record"
+                                  : "Period coverage not supplied"}
+                              </p>
+                            </td>
+                            <td className="py-4 pr-4">
+                              {budget != null
+                                ? money(budget)
+                                : budgets
+                                ? "Not set"
+                                : "Unavailable"}
+                            </td>
+                            <td className="py-4 pr-4">
+                              {estimate ? money(estimate.cost) : "Unavailable"}
+                              {estimate && (
+                                <p className="is-muted">
+                                  {money(estimate.best_case)}–
+                                  {money(estimate.worst_case)}
+                                  <br />
+                                  Growth scenarios
+                                </p>
+                              )}
+                            </td>
+                            <td className="py-4">
+                              {gap == null
+                                ? "—"
+                                : `${money(Math.abs(gap))} ${
+                                    gap > 0 ? "over" : "under"
+                                  }`}
+                              <p className="is-muted">
+                                {gap == null
+                                  ? "Needs a budget and estimate"
+                                  : "Based on trend estimate"}
+                              </p>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          }
+        )
+      )}
+      <p className="is-muted">
+        Only configured sources are shown. Unknown, unavailable, and missing
+        periods are not zero spend. Trend estimates use completed months; growth
+        scenarios are not confidence intervals. Select an account to edit its
+        budget or inspect records. Budgets do not enforce provider limits.
+      </p>
     </div>
   );
-};
-
-export default Dashboard;
+}

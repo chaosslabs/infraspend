@@ -49,6 +49,7 @@ interface ForecastEntry {
 }
 
 interface ForecastData {
+  basis?: { message: string; base_month: string | null; excluded_months?: string[] };
   forecast: ForecastEntry[];
   sums: {
     total_best_case: number;
@@ -487,7 +488,7 @@ const ForecastSummary: React.FC<{ forecastData: ForecastData }> = ({
 }) => (
   <dl className="mb-6 grid overflow-hidden rounded-md border border-gray-200 bg-gray-50/60 divide-y divide-gray-200 dark:border-white/10 dark:bg-white/5 dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
     <MetricStat
-      label="Best case"
+      label="Lower-growth scenario"
       value={formatMoney(forecastData.sums.total_best_case)}
       caption={`${forecastData.growth_rates.best_case}% monthly growth`}
       valueClassName="text-green-600 dark:text-green-300"
@@ -498,7 +499,7 @@ const ForecastSummary: React.FC<{ forecastData: ForecastData }> = ({
       caption={`${forecastData.growth_rates.trend_based}% monthly growth`}
     />
     <MetricStat
-      label="Worst case"
+      label="Higher-growth scenario"
       value={formatMoney(forecastData.sums.total_worst_case)}
       caption={`${forecastData.growth_rates.worst_case}% monthly growth`}
       valueClassName="text-red-500"
@@ -907,6 +908,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({
               Array.isArray(forecastData.forecast) &&
               forecastData.forecast.length > 0 ? (
               <>
+                <p className="is-muted mb-3">Illustrative growth scenarios, not confidence intervals. {forecastData.basis?.message}</p>
                 <ForecastSummary forecastData={forecastData} />
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[620px] text-sm">
@@ -914,13 +916,13 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({
                       <tr className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-white/10 dark:text-gray-400">
                         <th className="py-3 text-left font-semibold">Month</th>
                         <th className="py-3 text-right font-semibold">
-                          Best case
+                          Lower-growth scenario
                         </th>
                         <th className="py-3 text-right font-semibold">
                           Trend forecast
                         </th>
                         <th className="py-3 text-right font-semibold">
-                          Worst case
+                          Higher-growth scenario
                         </th>
                       </tr>
                     </thead>
@@ -950,7 +952,7 @@ const VendorMetrics: React.FC<VendorMetricsProps> = ({
               </>
             ) : (
               <div className="flex h-64 items-center justify-center rounded-md border border-dashed border-gray-300 dark:border-white/20">
-                <p className="text-gray-500">No forecast data available.</p>
+                <p className="text-gray-500 dark:text-gray-300">{forecastData?.basis?.message || "No forecast data available."}</p>
               </div>
             )}
           </>

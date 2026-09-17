@@ -1,0 +1,11 @@
+# Copy local environment files into new Codex-managed worktrees.
+# Only ignored files are copied; existing destination files are preserved.
+/.env
+/.env.local
+/.env.*.local
+/api/.env
+/api/.env.local
+/api/.env.*.local
+/dashboard/.env
+/dashboard/.env.local
+/dashboard/.env.*.local
